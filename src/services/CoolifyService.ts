@@ -3,6 +3,7 @@ import { logger } from './LoggerService';
 import {
   isValidApplicationLifecycleResponse,
   isValidCoolifyApplication,
+  isValidCoolifyProject,
   isValidCoolifyDeployment,
   isValidCoolifyDatabase,
   isValidCoolifyService,
@@ -57,6 +58,13 @@ export interface DatabaseBackupResource {
   status?: string;
   created_at?: string;
   size?: string;
+}
+
+export interface ProjectResource {
+  uuid: string;
+  name: string;
+  description?: string;
+  environments?: unknown[];
 }
 
 export interface ApplicationLifecycleResponse {
@@ -505,6 +513,56 @@ export class CoolifyService {
     }
 
     return 'Database restore requested.';
+  }
+
+  private normalizeProjectCollection(payload: unknown): ProjectResource[] {
+    if (Array.isArray(payload)) {
+      return payload.filter(isValidCoolifyProject);
+    }
+
+    if (payload && typeof payload === 'object') {
+      const candidate = payload as Record<string, unknown>;
+      const arrayLike = [candidate.projects, candidate.items, candidate.data].find(
+        (value) => Array.isArray(value)
+      );
+
+      if (Array.isArray(arrayLike)) {
+        return arrayLike.filter(isValidCoolifyProject);
+      }
+    }
+
+    return [];
+  }
+
+  async getProjects(): Promise<ProjectResource[]> {
+    const candidates = ['/api/v1/projects', '/api/v1/project'];
+    let lastError: unknown;
+
+    for (const endpoint of candidates) {
+      try {
+        const payload = await this.fetchWithAuth<unknown>(endpoint);
+        const projects = this.normalizeProjectCollection(payload);
+        if (projects.length > 0 || endpoint.endsWith('/projects')) {
+          return projects;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    return [];
+  }
+
+  async getProject(projectUuid: string): Promise<ProjectResource> {
+    return this.fetchValidatedObject(
+      `/api/v1/projects/${projectUuid}`,
+      isValidCoolifyProject,
+      'project'
+    );
   }
 
   async listEnvironmentVariables(

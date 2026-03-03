@@ -3,6 +3,7 @@ import {
   isValidApplicationLifecycleResponse,
   isValidCoolifyDatabase,
   isValidEnvironmentVariable,
+  isValidCoolifyProject,
   isValidCoolifyService,
   isNonEmptyString,
   isValidCoolifyApplication,
@@ -161,6 +162,15 @@ suite('Provider Runtime Guards', () => {
     );
     assert.strictEqual(
       isValidCoolifyDatabase({ uuid: '', name: 'postgres', status: 'running' }),
+      false
+    );
+
+    assert.strictEqual(
+      isValidCoolifyProject({ uuid: 'proj-1', name: 'Production' }),
+      true
+    );
+    assert.strictEqual(
+      isValidCoolifyProject({ uuid: 'proj-1', name: '' }),
       false
     );
   });

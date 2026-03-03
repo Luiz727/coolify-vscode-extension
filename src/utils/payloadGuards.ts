@@ -4,6 +4,7 @@ import type {
   DatabaseResource,
   Deployment as CoolifyDeployment,
   EnvironmentVariable,
+  ProjectResource,
   ServiceResource,
 } from '../services/CoolifyService';
 
@@ -138,5 +139,17 @@ export function isValidCoolifyDatabase(
     isNonEmptyString(candidate.uuid) &&
     isNonEmptyString(candidate.name) &&
     isNonEmptyString(candidate.status)
+  );
+}
+
+export function isValidCoolifyProject(value: unknown): value is ProjectResource {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    isNonEmptyString(candidate.uuid) &&
+    isNonEmptyString(candidate.name)
   );
 }

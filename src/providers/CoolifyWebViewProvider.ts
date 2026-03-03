@@ -9,6 +9,7 @@ import type {
   EnvironmentVariable,
   EnvironmentVariableCreateRequest,
   EnvironmentVariableUpdateRequest,
+  ProjectResource,
   ServiceResource,
 } from '../services/CoolifyService';
 import { logger } from '../services/LoggerService';
@@ -37,6 +38,7 @@ interface WebViewState {
   deployments: Deployment[];
   services: ServiceListItem[];
   databases: DatabaseListItem[];
+  projects: ProjectListItem[];
   contextNames: string[];
   activeContextName: string;
   envSyncConflictStrategy: EnvSyncConflictStrategy;
@@ -99,6 +101,12 @@ interface DatabaseListItem {
   description: string;
 }
 
+interface ProjectListItem {
+  id: string;
+  name: string;
+  description: string;
+}
+
 interface WebViewMessage {
   type:
     | 'refresh'
@@ -122,6 +130,7 @@ interface WebViewMessage {
     | 'fetch-app-envs'
     | 'fetch-service-details'
     | 'fetch-database-details'
+    | 'fetch-project-details'
     | 'fetch-database-backups'
     | 'create-database-backup'
     | 'restore-database-backup'
@@ -136,6 +145,7 @@ interface WebViewMessage {
   applicationId?: string;
   serviceId?: string;
   databaseId?: string;
+  projectId?: string;
   deploymentId?: string;
   backupId?: string;
   contextName?: string;
@@ -151,6 +161,7 @@ interface RefreshDataMessage {
   deployments: Deployment[];
   services: ServiceListItem[];
   databases: DatabaseListItem[];
+  projects: ProjectListItem[];
   contextNames: string[];
   activeContextName: string;
   envSyncConflictStrategy: EnvSyncConflictStrategy;
@@ -208,6 +219,15 @@ interface DatabaseBackupsMessage {
   }>;
 }
 
+interface ProjectDetailsMessage {
+  type: 'project-details-data';
+  projectId: string;
+  details: Array<{
+    key: string;
+    value: string;
+  }>;
+}
+
 type WebViewOutgoingMessage =
   | RefreshDataMessage
   | DeploymentStatusMessage
@@ -215,6 +235,7 @@ type WebViewOutgoingMessage =
   | ServiceDetailsMessage
   | DatabaseDetailsMessage
   | DatabaseBackupsMessage
+  | ProjectDetailsMessage
   | UiStateMessage;
 type CoolifyLanguage = 'en' | 'pt-BR';
 
@@ -396,15 +417,18 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           service.getDeployments(),
         ]);
 
-        const [servicesResult, databasesResult] = await Promise.allSettled([
+        const [servicesResult, databasesResult, projectsResult] = await Promise.allSettled([
           service.getServices(),
           service.getDatabases(),
+          service.getProjects(),
         ]);
 
         const services =
           servicesResult.status === 'fulfilled' ? servicesResult.value : [];
         const databases =
           databasesResult.status === 'fulfilled' ? databasesResult.value : [];
+        const projects =
+          projectsResult.status === 'fulfilled' ? projectsResult.value : [];
 
         if (servicesResult.status === 'rejected') {
           logger.warn('Failed to load services for sidebar', servicesResult.reason);
@@ -414,11 +438,16 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           logger.warn('Failed to load databases for sidebar', databasesResult.reason);
         }
 
+        if (projectsResult.status === 'rejected') {
+          logger.warn('Failed to load projects for sidebar', projectsResult.reason);
+        }
+
         await this.updateWebViewState(
           applications,
           deployments,
           services,
           databases,
+          projects,
           contextNames,
           activeContextName,
           serverUrl,
@@ -449,6 +478,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         deployments: [],
         services: [],
         databases: [],
+        projects: [],
         contextNames: [],
         activeContextName: '',
         envSyncConflictStrategy: 'prompt',
@@ -461,6 +491,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     deployments: CoolifyDeployment[],
     services: ServiceResource[],
     databases: DatabaseResource[],
+    projects: ProjectResource[],
     contextNames: string[],
     activeContextName: string,
     serverUrl: string,
@@ -490,6 +521,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     const uiDeployments = this.mapDeploymentsToUI(validDeployments);
     const uiServices = this.mapServicesToUI(services);
     const uiDatabases = this.mapDatabasesToUI(databases);
+    const uiProjects = this.mapProjectsToUI(projects);
 
     this._view!.webview.postMessage({
       type: 'refresh-data',
@@ -497,6 +529,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       deployments: uiDeployments,
       services: uiServices,
       databases: uiDatabases,
+      projects: uiProjects,
       contextNames,
       activeContextName,
       envSyncConflictStrategy,
@@ -583,6 +616,14 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       id: item.uuid,
       name: sanitizeDisplayTextOrFallback(item.name, item.uuid),
       status: sanitizeDisplayTextOrFallback(item.status, 'unknown'),
+      description: sanitizeDisplayText(item.description),
+    }));
+  }
+
+  private mapProjectsToUI(projects: ProjectResource[]): ProjectListItem[] {
+    return projects.map((item) => ({
+      id: item.uuid,
+      name: sanitizeDisplayTextOrFallback(item.name, item.uuid),
       description: sanitizeDisplayText(item.description),
     }));
   }
@@ -1133,6 +1174,16 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           } as WebViewOutgoingMessage);
         }
         break;
+      case 'fetch-project-details':
+        if (message.projectId && this.isViewValid()) {
+          const details = await this.getProjectDetails(message.projectId);
+          this._view!.webview.postMessage({
+            type: 'project-details-data',
+            projectId: message.projectId,
+            details,
+          } as WebViewOutgoingMessage);
+        }
+        break;
       case 'fetch-database-backups':
         if (message.databaseId && this.isViewValid()) {
           const backups = await this.getDatabaseBackups(message.databaseId);
@@ -1610,6 +1661,94 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       logger.error('Failed to get database backups', {
         databaseId,
+        error,
+      });
+      return [];
+    }
+  }
+
+  public async getProjects(): Promise<ProjectListItem[]> {
+    try {
+      const serverUrl = await this.configManager.getServerUrl();
+      const token = await this.configManager.getToken();
+
+      if (!serverUrl || !token) {
+        throw new Error('Extension not configured properly');
+      }
+
+      const service = new CoolifyService(serverUrl, token);
+      const projects = await service.getProjects();
+
+      return projects.map((item: ProjectResource) => ({
+        id: item.uuid,
+        name: sanitizeDisplayTextOrFallback(item.name, item.uuid),
+        description: sanitizeDisplayText(item.description),
+      }));
+    } catch (error) {
+      logger.error('Failed to get projects', error);
+      return [];
+    }
+  }
+
+  public async getProjectDetails(
+    projectId: string
+  ): Promise<Array<{ key: string; value: string }>> {
+    try {
+      const serverUrl = await this.configManager.getServerUrl();
+      const token = await this.configManager.getToken();
+
+      if (!serverUrl || !token) {
+        throw new Error('Extension not configured properly');
+      }
+
+      const service = new CoolifyService(serverUrl, token);
+      const details = await service.getProject(projectId);
+      const raw = details as unknown as Record<string, unknown>;
+
+      const baseEntries = Object.entries(raw)
+        .filter(([key]) => typeof key === 'string' && key.trim().length > 0)
+        .map(([key, value]) => {
+          const normalizedValue =
+            value === null || value === undefined
+              ? ''
+              : typeof value === 'string'
+                ? sanitizeDisplayText(value)
+                : typeof value === 'number' || typeof value === 'boolean'
+                  ? String(value)
+                  : sanitizeDisplayText(JSON.stringify(value));
+
+          return {
+            key: sanitizeDisplayTextOrFallback(key, 'field'),
+            value: sanitizeDisplayText(normalizedValue),
+          };
+        });
+
+      const environments = Array.isArray(raw.environments)
+        ? raw.environments
+            .map((item) => {
+              if (item && typeof item === 'object') {
+                const env = item as Record<string, unknown>;
+                const envName = env.name;
+                if (typeof envName === 'string' && envName.trim().length > 0) {
+                  return sanitizeDisplayText(envName);
+                }
+              }
+              return '';
+            })
+            .filter((name) => !!name)
+        : [];
+
+      if (environments.length > 0) {
+        baseEntries.push({
+          key: 'environments',
+          value: environments.join(', '),
+        });
+      }
+
+      return baseEntries;
+    } catch (error) {
+      logger.error('Failed to get project details', {
+        projectId,
         error,
       });
       return [];

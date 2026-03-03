@@ -52,4 +52,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - UX: add on-demand service details panel in sidebar cards (`Details`) using `GET /api/v1/services/{uuid}`.
 - UX: add on-demand database details panel in sidebar cards (`Details`) using `GET /api/v1/databases/{uuid}`.
 - Feature: add database backups actions in sidebar (`Backups`, `Create backup`, `Restore`) with API fallback strategy.
+- Feature: add projects section in sidebar with on-demand project details and environment visibility (`GET /api/v1/projects`, `GET /api/v1/projects/{uuid}`).
 - Docs: add security notes for transport configuration.

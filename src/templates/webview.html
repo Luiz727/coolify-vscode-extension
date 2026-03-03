@@ -575,6 +575,18 @@
       </div>
     </div>
 
+    <div class="section">
+      <div class="section-header">
+        <h3 id="projects-title">Projects</h3>
+      </div>
+      <div id="projects" class="cards-container">
+        <div class="loading">
+          <div class="loading-spinner"></div>
+          <span id="loading-projects">Loading projects...</span>
+        </div>
+      </div>
+    </div>
+
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const uiLanguage = '${uiLanguage}' === 'pt-BR' ? 'pt-BR' : 'en';
@@ -591,10 +603,13 @@
           loadingServices: 'Loading services...',
           databasesTitle: 'Databases',
           loadingDatabases: 'Loading databases...',
+          projectsTitle: 'Projects',
+          loadingProjects: 'Loading projects...',
           noApplications: 'No applications found',
           noDeployments: 'No active deployments',
           noServices: 'No services found',
           noDatabases: 'No databases found',
+          noProjects: 'No projects found',
           openInCoolify: 'Open',
           unknown: 'Unknown',
           noUrlConfigured: 'No URL configured',
@@ -663,10 +678,13 @@
           loadingServices: 'Carregando serviços...',
           databasesTitle: 'Bancos de dados',
           loadingDatabases: 'Carregando bancos de dados...',
+          projectsTitle: 'Projetos',
+          loadingProjects: 'Carregando projetos...',
           noApplications: 'Nenhuma aplicação encontrada',
           noDeployments: 'Nenhum deployment ativo',
           noServices: 'Nenhum serviço encontrado',
           noDatabases: 'Nenhum banco de dados encontrado',
+          noProjects: 'Nenhum projeto encontrado',
           openInCoolify: 'Abrir',
           unknown: 'Desconhecido',
           noUrlConfigured: 'Sem URL configurada',
@@ -742,6 +760,8 @@
           'loading-services': t('loadingServices'),
           'databases-title': t('databasesTitle'),
           'loading-databases': t('loadingDatabases'),
+          'projects-title': t('projectsTitle'),
+          'loading-projects': t('loadingProjects'),
           'favorites-only-label': t('favoritesOnly'),
           'context-label': t('contextLabel'),
           'create-context-button': t('createContext'),
@@ -822,6 +842,9 @@
       const expandedDatabaseBackupPanels = new Set();
       const databaseBackupsById = {};
       const loadingDatabaseBackupPanels = new Set();
+      const expandedProjectPanels = new Set();
+      const projectDetailsById = {};
+      const loadingProjectPanels = new Set();
       let availableContexts = [];
       let activeContextName = '';
       let selectedDeploymentStatus = 'all';
@@ -831,6 +854,7 @@
       let lastDeployments = [];
       let lastServices = [];
       let lastDatabases = [];
+      let lastProjects = [];
       let currentUiState = 'loading';
       const refreshButton = document.getElementById('refresh-button');
       const statusFilter = document.getElementById('status-filter');
@@ -966,6 +990,13 @@
           databaseBackupsById,
           previousState.databaseBackupsById || {}
         );
+        (previousState.expandedProjectIds || []).forEach((projectId) =>
+          expandedProjectPanels.add(projectId)
+        );
+        Object.assign(
+          projectDetailsById,
+          previousState.projectDetailsById || {}
+        );
         selectedDeploymentStatus =
           previousState.selectedDeploymentStatus || 'all';
         deploymentAppFilterText = previousState.deploymentAppFilterText || '';
@@ -998,6 +1029,7 @@
           previousState.deployments,
           previousState.services,
           previousState.databases,
+          previousState.projects,
           availableContexts,
           activeContextName
         );
@@ -1013,6 +1045,7 @@
           deployments: lastDeployments,
           services: lastServices,
           databases: lastDatabases,
+          projects: lastProjects,
           currentUiState,
           selectedContainerStatus,
           showFavoritesOnly,
@@ -1027,6 +1060,8 @@
           databaseDetailsById,
           expandedDatabaseBackupIds: Array.from(expandedDatabaseBackupPanels),
           databaseBackupsById,
+          expandedProjectIds: Array.from(expandedProjectPanels),
+          projectDetailsById,
           selectedDeploymentStatus,
           deploymentAppFilterText,
           envSyncConflictStrategy,
@@ -1273,6 +1308,25 @@
         vscode.postMessage({ type: 'restore-database-backup', databaseId, backupId });
       }
 
+      function listProjectDetails(projectId) {
+        if (expandedProjectPanels.has(projectId)) {
+          expandedProjectPanels.delete(projectId);
+          renderProjects(lastProjects);
+          persistState();
+          return;
+        }
+
+        expandedProjectPanels.add(projectId);
+
+        if (!projectDetailsById[projectId]) {
+          loadingProjectPanels.add(projectId);
+          vscode.postMessage({ type: 'fetch-project-details', projectId });
+        }
+
+        renderProjects(lastProjects);
+        persistState();
+      }
+
       function showDeploymentDetails(deploymentId) {
         vscode.postMessage({ type: 'show-deployment-details', deploymentId });
       }
@@ -1463,6 +1517,7 @@
               message.deployments,
               message.services,
               message.databases,
+              message.projects,
               message.contextNames,
               message.activeContextName,
               message.envSyncConflictStrategy
@@ -1501,6 +1556,14 @@
               : [];
             loadingDatabaseBackupPanels.delete(message.databaseId);
             renderDatabases(lastDatabases);
+            persistState();
+            break;
+          case 'project-details-data':
+            projectDetailsById[message.projectId] = Array.isArray(message.details)
+              ? message.details
+              : [];
+            loadingProjectPanels.delete(message.projectId);
+            renderProjects(lastProjects);
             persistState();
             break;
         }
@@ -1983,11 +2046,73 @@
         return card;
       }
 
+      function createProjectCard(project) {
+        const card = createElement('div', 'card project-card');
+        const cardMain = createElement('div', 'card-main');
+
+        cardMain.appendChild(
+          createElement('div', 'card-title', project.name || t('unknown'))
+        );
+
+        if (project.description) {
+          cardMain.appendChild(
+            createElement('div', 'card-subtitle', project.description)
+          );
+        }
+
+        if (expandedProjectPanels.has(project.id)) {
+          const detailsPanel = createElement('div', 'env-panel');
+
+          if (loadingProjectPanels.has(project.id)) {
+            detailsPanel.appendChild(
+              createElement('div', 'env-empty', t('serviceDetailsLoading'))
+            );
+          } else {
+            const details = projectDetailsById[project.id] || [];
+            if (!Array.isArray(details) || details.length === 0) {
+              detailsPanel.appendChild(
+                createElement('div', 'env-empty', t('serviceDetailsEmpty'))
+              );
+            } else {
+              details.forEach((item) => {
+                const row = createElement('div', 'env-row');
+                row.appendChild(createElement('span', 'env-key', item.key));
+                row.appendChild(
+                  createElement(
+                    'span',
+                    'value',
+                    String(item.value || t('notAvailable'))
+                  )
+                );
+                detailsPanel.appendChild(row);
+              });
+            }
+          }
+
+          cardMain.appendChild(detailsPanel);
+        }
+
+        const cardFooter = createElement('div', 'card-footer');
+        const buttonGroup = createElement('div', 'button-group');
+
+        const detailsButton = createElement('button', 'secondary-button', t('details'));
+        detailsButton.type = 'button';
+        detailsButton.addEventListener('click', () => listProjectDetails(project.id));
+        buttonGroup.appendChild(detailsButton);
+
+        cardFooter.appendChild(buttonGroup);
+
+        card.appendChild(cardMain);
+        card.appendChild(cardFooter);
+        return card;
+      }
+
       function updateUI(
         applications,
         deployments,
         services,
         databases,
+        projects,
         contextNames,
         activeContext,
         nextEnvSyncConflictStrategy
@@ -1996,6 +2121,7 @@
         lastDeployments = Array.isArray(deployments) ? deployments : [];
         lastServices = Array.isArray(services) ? services : [];
         lastDatabases = Array.isArray(databases) ? databases : [];
+        lastProjects = Array.isArray(projects) ? projects : [];
         availableContexts = Array.isArray(contextNames) ? contextNames : availableContexts;
         activeContextName = activeContext || activeContextName;
         envSyncConflictStrategy =
@@ -2013,6 +2139,7 @@
         renderDeployments(lastDeployments);
         renderServices(lastServices);
         renderDatabases(lastDatabases);
+        renderProjects(lastProjects);
         persistState();
       }
 
@@ -2096,6 +2223,19 @@
         }
 
         databasesContainer.replaceChildren(...databaseNodes);
+      }
+
+      function renderProjects(projects) {
+        const projectsContainer = document.getElementById('projects');
+        const projectNodes = [];
+
+        if (!Array.isArray(projects) || projects.length === 0) {
+          projectNodes.push(createEmptyElement(t('noProjects')));
+        } else {
+          projects.forEach((project) => projectNodes.push(createProjectCard(project)));
+        }
+
+        projectsContainer.replaceChildren(...projectNodes);
       }
     </script>
   </body>
