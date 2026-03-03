@@ -479,6 +479,10 @@
       <div class="filter-row">
         <span class="filter-label" id="context-label">Context:</span>
         <select id="context-select" class="status-filter context-select" title="Select context"></select>
+        <button id="create-context-button" class="secondary-button" type="button">Create</button>
+        <button id="delete-context-button" class="secondary-button" type="button">Delete</button>
+        <button id="configure-context-button" class="secondary-button" type="button">Configure</button>
+        <button id="reconfigure-context-button" class="secondary-button" type="button">Reconfigure</button>
       </div>
     </div>
 
@@ -596,6 +600,10 @@
           deploymentStatusFilterLabel: 'Deployment status:',
           deploymentStatusAll: 'All statuses',
           deploymentAppFilterPlaceholder: 'Filter by application',
+          createContext: 'Create',
+          deleteContext: 'Delete',
+          configureContext: 'Configure',
+          reconfigureContext: 'Reconfigure',
           uiStateLoading: 'Loading data...',
           uiStateError: 'Error while refreshing data.',
           uiStateUnconfigured: 'Extension is not configured.',
@@ -647,6 +655,10 @@
           deploymentStatusFilterLabel: 'Status do deployment:',
           deploymentStatusAll: 'Todos os status',
           deploymentAppFilterPlaceholder: 'Filtrar por aplicação',
+          createContext: 'Criar',
+          deleteContext: 'Excluir',
+          configureContext: 'Configurar',
+          reconfigureContext: 'Reconfigurar',
           uiStateLoading: 'Carregando dados...',
           uiStateError: 'Erro ao atualizar dados.',
           uiStateUnconfigured: 'Extensão não configurada.',
@@ -668,6 +680,10 @@
           'loading-deployments': t('loadingDeployments'),
           'favorites-only-label': t('favoritesOnly'),
           'context-label': t('contextLabel'),
+          'create-context-button': t('createContext'),
+          'delete-context-button': t('deleteContext'),
+          'configure-context-button': t('configureContext'),
+          'reconfigure-context-button': t('reconfigureContext'),
           'env-sync-strategy-label': t('envSyncStrategyLabel'),
           'deployment-status-filter-label': t('deploymentStatusFilterLabel'),
         };
@@ -745,6 +761,10 @@
       const statusFilter = document.getElementById('status-filter');
       const favoritesOnlyToggle = document.getElementById('favorites-only-toggle');
       const contextSelect = document.getElementById('context-select');
+      const createContextButton = document.getElementById('create-context-button');
+      const deleteContextButton = document.getElementById('delete-context-button');
+      const configureContextButton = document.getElementById('configure-context-button');
+      const reconfigureContextButton = document.getElementById('reconfigure-context-button');
       const deploymentStatusFilter = document.getElementById(
         'deployment-status-filter'
       );
@@ -783,6 +803,30 @@
           activeContextName = nextContextName;
           persistState();
           vscode.postMessage({ type: 'switch-context', contextName: nextContextName });
+        });
+      }
+
+      if (createContextButton) {
+        createContextButton.addEventListener('click', () => {
+          vscode.postMessage({ type: 'create-context' });
+        });
+      }
+
+      if (deleteContextButton) {
+        deleteContextButton.addEventListener('click', () => {
+          vscode.postMessage({ type: 'delete-context' });
+        });
+      }
+
+      if (configureContextButton) {
+        configureContextButton.addEventListener('click', () => {
+          vscode.postMessage({ type: 'configure' });
+        });
+      }
+
+      if (reconfigureContextButton) {
+        reconfigureContextButton.addEventListener('click', () => {
+          vscode.postMessage({ type: 'reconfigure' });
         });
       }
 

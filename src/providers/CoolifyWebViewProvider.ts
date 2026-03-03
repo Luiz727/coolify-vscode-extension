@@ -99,6 +99,8 @@ interface WebViewMessage {
     | 'set-env-sync-conflict-strategy'
     | 'open-external-url'
     | 'switch-context'
+    | 'create-context'
+    | 'delete-context'
     | 'configure'
     | 'reconfigure';
   applicationId?: string;
@@ -870,6 +872,12 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
             message.contextName
           );
         }
+        break;
+      case 'create-context':
+        await vscode.commands.executeCommand('coolify.createContext');
+        break;
+      case 'delete-context':
+        await vscode.commands.executeCommand('coolify.deleteContext');
         break;
       case 'configure':
         await vscode.commands.executeCommand('coolify.configure');

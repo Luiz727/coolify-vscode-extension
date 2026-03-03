@@ -331,7 +331,7 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 - [x] Deployments avançados (get/cancel/logs).
 - [x] Multi-contexto.
 - [x] Env vars CRUD + sync.
-- [ ] Paridade Command Palette ↔ Sidebar para funções operacionais.
+- [x] Paridade Command Palette ↔ Sidebar para funções operacionais.
 - [x] Chat participant `@coolify` para operações MVP.
 - [x] Language Model Tools no Copilot Chat (Configurar Ferramentas).
 
@@ -346,8 +346,7 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 
 Itens ainda faltantes para fechar o plano com qualidade de produção:
 
-1. **Paridade total Palette ↔ Sidebar** (validar e cobrir qualquer operação ainda órfã).
-2. **Documentação final** (matriz suportado/não suportado, troubleshooting completo, guia de segurança ampliado).
+1. **Documentação final** (matriz suportado/não suportado, troubleshooting completo, guia de segurança ampliado).
 
 ---
 

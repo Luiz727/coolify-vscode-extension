@@ -45,4 +45,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Security: centralize display-text sanitization in provider mappings before sending data to webview.
 - Architecture: validate API payload shapes in `CoolifyService` (arrays/objects) with typed guards before exposing data to provider/tools.
 - Architecture: add explicit UI state machine (`unconfigured`, `loading`, `ready`, `error`) with provider-driven transitions and webview state feedback banner.
+- UX: add context operation actions in sidebar (`create`, `delete`, `configure`, `reconfigure`) to close operational parity with Command Palette.
 - Docs: add security notes for transport configuration.
