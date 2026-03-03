@@ -44,4 +44,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Reliability: align `languageModelTools` IDs to VS Code naming rules (`[\w-]+`) to avoid runtime registration warnings.
 - Security: centralize display-text sanitization in provider mappings before sending data to webview.
 - Architecture: validate API payload shapes in `CoolifyService` (arrays/objects) with typed guards before exposing data to provider/tools.
+- Architecture: add explicit UI state machine (`unconfigured`, `loading`, `ready`, `error`) with provider-driven transitions and webview state feedback banner.
 - Docs: add security notes for transport configuration.

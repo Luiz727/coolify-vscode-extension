@@ -324,7 +324,7 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 ## Core técnico
 - [x] Cliente API com timeout/retry/classificação de erro.
 - [x] Tipagem estrita de respostas (com interfaces + validação de shape em runtime no service).
-- [ ] Estado da UI explícito.
+- [x] Estado da UI explícito.
 
 ## Produto
 - [x] App details + lifecycle completo.
@@ -346,9 +346,8 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 
 Itens ainda faltantes para fechar o plano com qualidade de produção:
 
-1. **Máquina de estado explícita da UI** (`unconfigured/loading/ready/error`) para reduzir lógica ad-hoc.
-2. **Paridade total Palette ↔ Sidebar** (validar e cobrir qualquer operação ainda órfã).
-3. **Documentação final** (matriz suportado/não suportado, troubleshooting completo, guia de segurança ampliado).
+1. **Paridade total Palette ↔ Sidebar** (validar e cobrir qualquer operação ainda órfã).
+2. **Documentação final** (matriz suportado/não suportado, troubleshooting completo, guia de segurança ampliado).
 
 ---
 

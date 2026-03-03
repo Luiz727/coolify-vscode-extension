@@ -401,6 +401,30 @@
         border-radius: 50%;
         animation: spin 1s linear infinite;
       }
+      .ui-state-banner {
+        display: none;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--vscode-widget-border);
+        font-size: 12px;
+      }
+      .ui-state-banner.visible {
+        display: block;
+      }
+      .ui-state-loading {
+        background: var(--vscode-editorInfo-background);
+        color: var(--vscode-editorInfo-foreground);
+      }
+      .ui-state-error {
+        background: var(--vscode-inputValidation-errorBackground);
+        color: var(--vscode-inputValidation-errorForeground);
+        border-color: var(--vscode-inputValidation-errorBorder);
+      }
+      .ui-state-unconfigured {
+        background: var(--vscode-inputValidation-warningBackground);
+        color: var(--vscode-inputValidation-warningForeground);
+        border-color: var(--vscode-inputValidation-warningBorder);
+      }
 
       .refresh-button {
         position: relative;
@@ -450,6 +474,7 @@
     </style>
   </head>
   <body>
+    <div id="ui-state-banner" class="ui-state-banner" role="status" aria-live="polite"></div>
     <div class="section context-section">
       <div class="filter-row">
         <span class="filter-label" id="context-label">Context:</span>
@@ -571,6 +596,9 @@
           deploymentStatusFilterLabel: 'Deployment status:',
           deploymentStatusAll: 'All statuses',
           deploymentAppFilterPlaceholder: 'Filter by application',
+          uiStateLoading: 'Loading data...',
+          uiStateError: 'Error while refreshing data.',
+          uiStateUnconfigured: 'Extension is not configured.',
         },
         'pt-BR': {
           applicationsTitle: 'Aplicações',
@@ -619,6 +647,9 @@
           deploymentStatusFilterLabel: 'Status do deployment:',
           deploymentStatusAll: 'Todos os status',
           deploymentAppFilterPlaceholder: 'Filtrar por aplicação',
+          uiStateLoading: 'Carregando dados...',
+          uiStateError: 'Erro ao atualizar dados.',
+          uiStateUnconfigured: 'Extensão não configurada.',
         },
       };
 
@@ -709,6 +740,7 @@
       let envSyncConflictStrategy = 'prompt';
       let lastApplications = [];
       let lastDeployments = [];
+      let currentUiState = 'loading';
       const refreshButton = document.getElementById('refresh-button');
       const statusFilter = document.getElementById('status-filter');
       const favoritesOnlyToggle = document.getElementById('favorites-only-toggle');
@@ -799,6 +831,7 @@
         deploymentAppFilterText = previousState.deploymentAppFilterText || '';
         envSyncConflictStrategy =
           previousState.envSyncConflictStrategy || 'prompt';
+        currentUiState = previousState.currentUiState || 'loading';
         availableContexts = previousState.contextNames || [];
         activeContextName = previousState.activeContextName || '';
 
@@ -826,12 +859,17 @@
           availableContexts,
           activeContextName
         );
+
+        updateUiState(currentUiState);
+      } else {
+        updateUiState('loading');
       }
 
       function persistState() {
         vscode.setState({
           applications: lastApplications,
           deployments: lastDeployments,
+          currentUiState,
           selectedContainerStatus,
           showFavoritesOnly,
           favoriteApplicationIds: Array.from(favoriteApplicationIds),
@@ -948,6 +986,34 @@
         if (isRefreshing) return;
         setRefreshing(true);
         vscode.postMessage({ type: 'refresh' });
+      }
+      function updateUiState(state, message) {
+        currentUiState = state || 'ready';
+        const banner = document.getElementById('ui-state-banner');
+        if (!banner) {
+          return;
+        }
+
+        banner.className = 'ui-state-banner';
+        if (currentUiState === 'ready') {
+          banner.textContent = '';
+          return;
+        }
+
+        let defaultMessage = '';
+        if (currentUiState === 'loading') {
+          defaultMessage = t('uiStateLoading');
+          banner.classList.add('ui-state-loading');
+        } else if (currentUiState === 'error') {
+          defaultMessage = t('uiStateError');
+          banner.classList.add('ui-state-error');
+        } else if (currentUiState === 'unconfigured') {
+          defaultMessage = t('uiStateUnconfigured');
+          banner.classList.add('ui-state-unconfigured');
+        }
+
+        banner.classList.add('visible');
+        banner.textContent = message || defaultMessage;
       }
 
       function deployApplication(applicationId) {
@@ -1144,6 +1210,12 @@
       window.addEventListener('message', (event) => {
         const message = event.data;
         switch (message.type) {
+          case 'ui-state':
+            updateUiState(message.state, message.message);
+            if (message.state !== 'loading') {
+              setRefreshing(false);
+            }
+            break;
           case 'refresh-data':
             updateUI(
               message.applications,

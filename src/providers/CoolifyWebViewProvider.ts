@@ -17,6 +17,10 @@ import {
   sanitizeDisplayText,
   sanitizeDisplayTextOrFallback,
 } from '../utils/displaySanitizer';
+import {
+  isUiStateTransitionAllowed,
+  UiState,
+} from '../utils/uiStateMachine';
 
 // Types and Interfaces
 interface RetryConfig {
@@ -115,6 +119,12 @@ interface RefreshDataMessage {
   envSyncConflictStrategy: EnvSyncConflictStrategy;
 }
 
+interface UiStateMessage {
+  type: 'ui-state';
+  state: UiState;
+  message?: string;
+}
+
 interface DeploymentStatusMessage {
   type: 'deployment-status';
   status: string;
@@ -134,7 +144,8 @@ interface AppEnvironmentVariablesMessage {
 type WebViewOutgoingMessage =
   | RefreshDataMessage
   | DeploymentStatusMessage
-  | AppEnvironmentVariablesMessage;
+  | AppEnvironmentVariablesMessage
+  | UiStateMessage;
 type CoolifyLanguage = 'en' | 'pt-BR';
 
 // Constants
@@ -155,6 +166,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   private deployingApplications = new Set<string>();
   private pendingRefresh?: NodeJS.Timeout;
   private disposables: vscode.Disposable[] = [];
+  private currentUiState: UiState = 'loading';
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -291,6 +303,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    await this.transitionUiState('loading');
+
     try {
       await this.withRetry(async () => {
         const serverUrl = await this.configManager.getServerUrl();
@@ -327,11 +341,27 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleUnconfiguredState(): Promise<void> {
+    await this.transitionUiState(
+      'unconfigured',
+      'Coolify is not configured. Please configure the extension.'
+    );
+
     await vscode.commands.executeCommand(
       'setContext',
       'coolify.isConfigured',
       false
     );
+
+    if (this.isViewValid()) {
+      this._view!.webview.postMessage({
+        type: 'refresh-data',
+        applications: [],
+        deployments: [],
+        contextNames: [],
+        activeContextName: '',
+        envSyncConflictStrategy: 'prompt',
+      } as WebViewOutgoingMessage);
+    }
   }
 
   private async updateWebViewState(
@@ -373,6 +403,32 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       activeContextName,
       envSyncConflictStrategy,
     } as WebViewOutgoingMessage);
+
+    await this.transitionUiState('ready');
+  }
+
+  private async transitionUiState(
+    nextState: UiState,
+    message?: string
+  ): Promise<void> {
+    const previousState = this.currentUiState;
+    if (!isUiStateTransitionAllowed(previousState, nextState)) {
+      logger.warn('Ignoring invalid UI state transition', {
+        previousState,
+        nextState,
+      });
+      return;
+    }
+
+    this.currentUiState = nextState;
+
+    if (this.isViewValid()) {
+      this._view!.webview.postMessage({
+        type: 'ui-state',
+        state: nextState,
+        message,
+      } as WebViewOutgoingMessage);
+    }
   }
 
   private mapApplicationsToUI(
@@ -849,6 +905,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   private async handleUnconfiguredWebView(
     webviewView: vscode.WebviewView
   ): Promise<void> {
+    this.currentUiState = 'unconfigured';
     this.stopRefreshInterval();
     if (this.isViewValid()) {
       webviewView.webview.html = await this.getWelcomeHtml();
@@ -858,6 +915,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   private async initializeConfiguredWebView(
     webviewView: vscode.WebviewView
   ): Promise<void> {
+    this.currentUiState = 'loading';
     if (this.isViewValid()) {
       webviewView.webview.html = await this.getWebViewHtml();
       if (webviewView.visible) {
@@ -958,12 +1016,24 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         'Authentication failed. Please reconfigure the extension.'
       );
     }
+
+    await this.transitionUiState(
+      'unconfigured',
+      'Authentication failed. Please reconfigure the extension.'
+    );
   }
 
   private async handleRefreshError(error: unknown): Promise<void> {
     if (this.isAuthenticationError(error)) {
       await this.handleAuthenticationError();
     } else {
+      const errorMessage =
+        error instanceof CoolifyApiError
+          ? error.message
+          : 'Failed to refresh data. Please try again.';
+
+      await this.transitionUiState('error', errorMessage);
+
       if (this.isViewValid()) {
         if (error instanceof CoolifyApiError) {
           vscode.window.showErrorMessage(error.message);
