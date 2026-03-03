@@ -402,14 +402,16 @@
         animation: spin 1s linear infinite;
       }
       .ui-state-banner {
-        display: none;
+        min-height: 34px;
+        box-sizing: border-box;
         padding: 8px 10px;
         border-radius: 6px;
-        border: 1px solid var(--vscode-widget-border);
+        border: 1px solid transparent;
         font-size: 12px;
+        visibility: hidden;
       }
       .ui-state-banner.visible {
-        display: block;
+        visibility: visible;
       }
       .ui-state-loading {
         background: var(--vscode-editorInfo-background);
@@ -1705,12 +1707,10 @@
         activeContext,
         nextEnvSyncConflictStrategy
       ) {
-        if (!applications || !deployments || !services || !databases) return;
-
-        lastApplications = applications;
-        lastDeployments = deployments;
-        lastServices = services;
-        lastDatabases = databases;
+        lastApplications = Array.isArray(applications) ? applications : [];
+        lastDeployments = Array.isArray(deployments) ? deployments : [];
+        lastServices = Array.isArray(services) ? services : [];
+        lastDatabases = Array.isArray(databases) ? databases : [];
         availableContexts = Array.isArray(contextNames) ? contextNames : availableContexts;
         activeContextName = activeContext || activeContextName;
         envSyncConflictStrategy =

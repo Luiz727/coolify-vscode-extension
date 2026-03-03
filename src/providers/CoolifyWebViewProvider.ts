@@ -351,12 +351,28 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         }
 
         const service = new CoolifyService(serverUrl, token);
-        const [applications, deployments, services, databases] = await Promise.all([
+        const [applications, deployments] = await Promise.all([
           service.getApplications(),
           service.getDeployments(),
+        ]);
+
+        const [servicesResult, databasesResult] = await Promise.allSettled([
           service.getServices(),
           service.getDatabases(),
         ]);
+
+        const services =
+          servicesResult.status === 'fulfilled' ? servicesResult.value : [];
+        const databases =
+          databasesResult.status === 'fulfilled' ? databasesResult.value : [];
+
+        if (servicesResult.status === 'rejected') {
+          logger.warn('Failed to load services for sidebar', servicesResult.reason);
+        }
+
+        if (databasesResult.status === 'rejected') {
+          logger.warn('Failed to load databases for sidebar', databasesResult.reason);
+        }
 
         await this.updateWebViewState(
           applications,
