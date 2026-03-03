@@ -3,6 +3,7 @@ import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { CoolifyApiError, CoolifyService } from '../services/CoolifyService';
 import type {
   Application as CoolifyApplication,
+  DatabaseBackupResource,
   DatabaseResource,
   Deployment as CoolifyDeployment,
   EnvironmentVariable,
@@ -119,6 +120,11 @@ interface WebViewMessage {
     | 'update-app-env'
     | 'delete-app-env'
     | 'fetch-app-envs'
+    | 'fetch-service-details'
+    | 'fetch-database-details'
+    | 'fetch-database-backups'
+    | 'create-database-backup'
+    | 'restore-database-backup'
     | 'sync-app-envs'
     | 'set-env-sync-conflict-strategy'
     | 'open-external-url'
@@ -131,6 +137,7 @@ interface WebViewMessage {
   serviceId?: string;
   databaseId?: string;
   deploymentId?: string;
+  backupId?: string;
   contextName?: string;
   environmentVariableUuid?: string;
   environmentVariableKey?: string;
@@ -171,10 +178,43 @@ interface AppEnvironmentVariablesMessage {
   }>;
 }
 
+interface ServiceDetailsMessage {
+  type: 'service-details-data';
+  serviceId: string;
+  details: Array<{
+    key: string;
+    value: string;
+  }>;
+}
+
+interface DatabaseDetailsMessage {
+  type: 'database-details-data';
+  databaseId: string;
+  details: Array<{
+    key: string;
+    value: string;
+  }>;
+}
+
+interface DatabaseBackupsMessage {
+  type: 'database-backups-data';
+  databaseId: string;
+  backups: Array<{
+    id: string;
+    name: string;
+    status: string;
+    createdAt: string;
+    size: string;
+  }>;
+}
+
 type WebViewOutgoingMessage =
   | RefreshDataMessage
   | DeploymentStatusMessage
   | AppEnvironmentVariablesMessage
+  | ServiceDetailsMessage
+  | DatabaseDetailsMessage
+  | DatabaseBackupsMessage
   | UiStateMessage;
 type CoolifyLanguage = 'en' | 'pt-BR';
 
@@ -509,17 +549,22 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
   private mapDeploymentsToUI(deployments: CoolifyDeployment[]): Deployment[] {
     return deployments.map((d) => ({
-      id: d.id,
-      applicationId: d.application_id,
+      id: String(d.id ?? ''),
+      applicationId: sanitizeDisplayTextOrFallback(
+        d.application_id,
+        String(d.id ?? '')
+      ),
       applicationName: sanitizeDisplayTextOrFallback(
         d.application_name,
-        d.application_id
+        sanitizeDisplayTextOrFallback(d.application_id, String(d.id ?? ''))
       ),
       status: sanitizeDisplayTextOrFallback(d.status, 'unknown'),
       commit:
         sanitizeDisplayText(d.commit_message) ||
         `Deploying ${sanitizeDisplayText(d.commit).slice(0, 7) || 'latest'} commit`,
-      startedAt: new Date(d.created_at).toLocaleString(),
+      startedAt: sanitizeDisplayText(d.created_at)
+        ? new Date(sanitizeDisplayText(d.created_at)).toLocaleString()
+        : '',
       externalUrl: this.normalizeExternalUrl(d.deployment_url),
     }));
   }
@@ -544,12 +589,20 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
   private mapDeploymentToListItem(deployment: CoolifyDeployment): DeploymentListItem {
     return {
-      id: deployment.deployment_uuid || deployment.id,
-      deploymentUuid: deployment.deployment_uuid,
-      applicationId: deployment.application_id,
+      id: String(deployment.deployment_uuid || deployment.id || ''),
+      deploymentUuid: deployment.deployment_uuid
+        ? String(deployment.deployment_uuid)
+        : undefined,
+      applicationId: sanitizeDisplayTextOrFallback(
+        deployment.application_id,
+        String(deployment.id ?? '')
+      ),
       applicationName: sanitizeDisplayTextOrFallback(
         deployment.application_name,
-        deployment.application_id
+        sanitizeDisplayTextOrFallback(
+          deployment.application_id,
+          String(deployment.id ?? '')
+        )
       ),
       status: sanitizeDisplayTextOrFallback(deployment.status, 'unknown'),
       commit: sanitizeDisplayText(deployment.commit),
@@ -1060,6 +1113,63 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           } as WebViewOutgoingMessage);
         }
         break;
+      case 'fetch-service-details':
+        if (message.serviceId && this.isViewValid()) {
+          const details = await this.getServiceDetails(message.serviceId);
+          this._view!.webview.postMessage({
+            type: 'service-details-data',
+            serviceId: message.serviceId,
+            details,
+          } as WebViewOutgoingMessage);
+        }
+        break;
+      case 'fetch-database-details':
+        if (message.databaseId && this.isViewValid()) {
+          const details = await this.getDatabaseDetails(message.databaseId);
+          this._view!.webview.postMessage({
+            type: 'database-details-data',
+            databaseId: message.databaseId,
+            details,
+          } as WebViewOutgoingMessage);
+        }
+        break;
+      case 'fetch-database-backups':
+        if (message.databaseId && this.isViewValid()) {
+          const backups = await this.getDatabaseBackups(message.databaseId);
+          this._view!.webview.postMessage({
+            type: 'database-backups-data',
+            databaseId: message.databaseId,
+            backups,
+          } as WebViewOutgoingMessage);
+        }
+        break;
+      case 'create-database-backup':
+        if (message.databaseId && this.isViewValid()) {
+          const result = await this.createDatabaseBackup(message.databaseId);
+          vscode.window.showInformationMessage(result);
+          const backups = await this.getDatabaseBackups(message.databaseId);
+          this._view!.webview.postMessage({
+            type: 'database-backups-data',
+            databaseId: message.databaseId,
+            backups,
+          } as WebViewOutgoingMessage);
+        }
+        break;
+      case 'restore-database-backup':
+        if (message.databaseId && message.backupId && this.isViewValid()) {
+          const result = await this.restoreDatabaseBackup(
+            message.databaseId,
+            message.backupId
+          );
+          vscode.window.showInformationMessage(result);
+          const backups = await this.getDatabaseBackups(message.databaseId);
+          this._view!.webview.postMessage({
+            type: 'database-backups-data',
+            databaseId: message.databaseId,
+            backups,
+          } as WebViewOutgoingMessage);
+        }
+        break;
       case 'open-external-url':
         if (message.url) {
           const normalizedUrl = this.normalizeExternalUrl(message.url);
@@ -1362,6 +1472,47 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  public async getServiceDetails(
+    serviceId: string
+  ): Promise<Array<{ key: string; value: string }>> {
+    try {
+      const serverUrl = await this.configManager.getServerUrl();
+      const token = await this.configManager.getToken();
+
+      if (!serverUrl || !token) {
+        throw new Error('Extension not configured properly');
+      }
+
+      const service = new CoolifyService(serverUrl, token);
+      const details = await service.getService(serviceId);
+      const raw = details as unknown as Record<string, unknown>;
+
+      return Object.entries(raw)
+        .filter(([key]) => typeof key === 'string' && key.trim().length > 0)
+        .map(([key, value]) => {
+          const normalizedValue =
+            value === null || value === undefined
+              ? ''
+              : typeof value === 'string'
+                ? sanitizeDisplayText(value)
+                : typeof value === 'number' || typeof value === 'boolean'
+                  ? String(value)
+                  : sanitizeDisplayText(JSON.stringify(value));
+
+          return {
+            key: sanitizeDisplayTextOrFallback(key, 'field'),
+            value: sanitizeDisplayText(normalizedValue),
+          };
+        });
+    } catch (error) {
+      logger.error('Failed to get service details', {
+        serviceId,
+        error,
+      });
+      return [];
+    }
+  }
+
   public async getDatabases(): Promise<DatabaseListItem[]> {
     try {
       const serverUrl = await this.configManager.getServerUrl();
@@ -1384,6 +1535,116 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       logger.error('Failed to get databases', error);
       throw error;
     }
+  }
+
+  public async getDatabaseDetails(
+    databaseId: string
+  ): Promise<Array<{ key: string; value: string }>> {
+    try {
+      const serverUrl = await this.configManager.getServerUrl();
+      const token = await this.configManager.getToken();
+
+      if (!serverUrl || !token) {
+        throw new Error('Extension not configured properly');
+      }
+
+      const service = new CoolifyService(serverUrl, token);
+      const details = await service.getDatabase(databaseId);
+      const raw = details as unknown as Record<string, unknown>;
+
+      return Object.entries(raw)
+        .filter(([key]) => typeof key === 'string' && key.trim().length > 0)
+        .map(([key, value]) => {
+          const normalizedValue =
+            value === null || value === undefined
+              ? ''
+              : typeof value === 'string'
+                ? sanitizeDisplayText(value)
+                : typeof value === 'number' || typeof value === 'boolean'
+                  ? String(value)
+                  : sanitizeDisplayText(JSON.stringify(value));
+
+          return {
+            key: sanitizeDisplayTextOrFallback(key, 'field'),
+            value: sanitizeDisplayText(normalizedValue),
+          };
+        });
+    } catch (error) {
+      logger.error('Failed to get database details', {
+        databaseId,
+        error,
+      });
+      return [];
+    }
+  }
+
+  public async getDatabaseBackups(
+    databaseId: string
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      status: string;
+      createdAt: string;
+      size: string;
+    }>
+  > {
+    try {
+      const serverUrl = await this.configManager.getServerUrl();
+      const token = await this.configManager.getToken();
+
+      if (!serverUrl || !token) {
+        throw new Error('Extension not configured properly');
+      }
+
+      const service = new CoolifyService(serverUrl, token);
+      const backups = await service.listDatabaseBackups(databaseId);
+
+      return backups.map((backup: DatabaseBackupResource) => ({
+        id: sanitizeDisplayTextOrFallback(backup.id, 'unknown'),
+        name: sanitizeDisplayTextOrFallback(backup.name, 'backup'),
+        status: sanitizeDisplayTextOrFallback(backup.status, 'unknown'),
+        createdAt: sanitizeDisplayText(backup.created_at),
+        size: sanitizeDisplayText(backup.size),
+      }));
+    } catch (error) {
+      logger.error('Failed to get database backups', {
+        databaseId,
+        error,
+      });
+      return [];
+    }
+  }
+
+  public async createDatabaseBackup(databaseId: string): Promise<string> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    const service = new CoolifyService(serverUrl, token);
+    const result = await service.createDatabaseBackup(databaseId);
+    await this.refreshData();
+    return result;
+  }
+
+  public async restoreDatabaseBackup(
+    databaseId: string,
+    backupId: string
+  ): Promise<string> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    const service = new CoolifyService(serverUrl, token);
+    const result = await service.restoreDatabaseBackup(databaseId, backupId);
+    await this.refreshData();
+    return result;
   }
 
   public async getDeploymentDetails(

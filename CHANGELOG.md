@@ -49,4 +49,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Docs: add operational guide with support matrix, troubleshooting playbook, and expanded security guidance.
 - Feature: expand Coolify API surface with services/databases lifecycle commands and application deployment history listing.
 - UX: add sidebar sections for services and databases with inline start/stop/restart actions.
+- UX: add on-demand service details panel in sidebar cards (`Details`) using `GET /api/v1/services/{uuid}`.
+- UX: add on-demand database details panel in sidebar cards (`Details`) using `GET /api/v1/databases/{uuid}`.
+- Feature: add database backups actions in sidebar (`Backups`, `Create backup`, `Restore`) with API fallback strategy.
 - Docs: add security notes for transport configuration.

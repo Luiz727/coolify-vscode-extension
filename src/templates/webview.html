@@ -629,6 +629,17 @@
           deleteEnv: 'Delete Env',
           envPanelEmpty: 'No environment variables',
           envPanelLoading: 'Loading env vars...',
+          serviceDetailsLoading: 'Loading service details...',
+          serviceDetailsEmpty: 'No service details available',
+          databaseDetailsLoading: 'Loading database details...',
+          databaseDetailsEmpty: 'No database details available',
+          backups: 'Backups',
+          createBackup: 'Create backup',
+          restoreBackup: 'Restore',
+          backupLoading: 'Loading backups...',
+          backupEmpty: 'No backups found',
+          backupCreatedAt: 'Created:',
+          backupSize: 'Size:',
           deploymentStatusFilterLabel: 'Deployment status:',
           deploymentStatusAll: 'All statuses',
           deploymentAppFilterPlaceholder: 'Filter by application',
@@ -690,6 +701,17 @@
           deleteEnv: 'Remover Env',
           envPanelEmpty: 'Nenhuma variável de ambiente',
           envPanelLoading: 'Carregando env vars...',
+          serviceDetailsLoading: 'Carregando detalhes do serviço...',
+          serviceDetailsEmpty: 'Sem detalhes do serviço disponíveis',
+          databaseDetailsLoading: 'Carregando detalhes do banco de dados...',
+          databaseDetailsEmpty: 'Sem detalhes do banco de dados disponíveis',
+          backups: 'Backups',
+          createBackup: 'Criar backup',
+          restoreBackup: 'Restaurar',
+          backupLoading: 'Carregando backups...',
+          backupEmpty: 'Nenhum backup encontrado',
+          backupCreatedAt: 'Criado em:',
+          backupSize: 'Tamanho:',
           deploymentStatusFilterLabel: 'Status do deployment:',
           deploymentStatusAll: 'Todos os status',
           deploymentAppFilterPlaceholder: 'Filtrar por aplicação',
@@ -791,6 +813,15 @@
       const expandedEnvPanels = new Set();
       const appEnvsByApplicationId = {};
       const loadingEnvPanels = new Set();
+      const expandedServicePanels = new Set();
+      const serviceDetailsById = {};
+      const loadingServicePanels = new Set();
+      const expandedDatabasePanels = new Set();
+      const databaseDetailsById = {};
+      const loadingDatabasePanels = new Set();
+      const expandedDatabaseBackupPanels = new Set();
+      const databaseBackupsById = {};
+      const loadingDatabaseBackupPanels = new Set();
       let availableContexts = [];
       let activeContextName = '';
       let selectedDeploymentStatus = 'all';
@@ -914,6 +945,27 @@
           appEnvsByApplicationId,
           previousState.appEnvsByApplicationId || {}
         );
+        (previousState.expandedServiceIds || []).forEach((serviceId) =>
+          expandedServicePanels.add(serviceId)
+        );
+        Object.assign(
+          serviceDetailsById,
+          previousState.serviceDetailsById || {}
+        );
+        (previousState.expandedDatabaseIds || []).forEach((databaseId) =>
+          expandedDatabasePanels.add(databaseId)
+        );
+        Object.assign(
+          databaseDetailsById,
+          previousState.databaseDetailsById || {}
+        );
+        (previousState.expandedDatabaseBackupIds || []).forEach((databaseId) =>
+          expandedDatabaseBackupPanels.add(databaseId)
+        );
+        Object.assign(
+          databaseBackupsById,
+          previousState.databaseBackupsById || {}
+        );
         selectedDeploymentStatus =
           previousState.selectedDeploymentStatus || 'all';
         deploymentAppFilterText = previousState.deploymentAppFilterText || '';
@@ -969,6 +1021,12 @@
           activeContextName,
           expandedEnvApplicationIds: Array.from(expandedEnvPanels),
           appEnvsByApplicationId,
+          expandedServiceIds: Array.from(expandedServicePanels),
+          serviceDetailsById,
+          expandedDatabaseIds: Array.from(expandedDatabasePanels),
+          databaseDetailsById,
+          expandedDatabaseBackupIds: Array.from(expandedDatabaseBackupPanels),
+          databaseBackupsById,
           selectedDeploymentStatus,
           deploymentAppFilterText,
           envSyncConflictStrategy,
@@ -1136,6 +1194,25 @@
         vscode.postMessage({ type: 'restart-service', serviceId });
       }
 
+      function listServiceDetails(serviceId) {
+        if (expandedServicePanels.has(serviceId)) {
+          expandedServicePanels.delete(serviceId);
+          renderServices(lastServices);
+          persistState();
+          return;
+        }
+
+        expandedServicePanels.add(serviceId);
+
+        if (!serviceDetailsById[serviceId]) {
+          loadingServicePanels.add(serviceId);
+          vscode.postMessage({ type: 'fetch-service-details', serviceId });
+        }
+
+        renderServices(lastServices);
+        persistState();
+      }
+
       function startDatabase(databaseId) {
         vscode.postMessage({ type: 'start-database', databaseId });
       }
@@ -1146,6 +1223,54 @@
 
       function restartDatabase(databaseId) {
         vscode.postMessage({ type: 'restart-database', databaseId });
+      }
+
+      function listDatabaseDetails(databaseId) {
+        if (expandedDatabasePanels.has(databaseId)) {
+          expandedDatabasePanels.delete(databaseId);
+          renderDatabases(lastDatabases);
+          persistState();
+          return;
+        }
+
+        expandedDatabasePanels.add(databaseId);
+
+        if (!databaseDetailsById[databaseId]) {
+          loadingDatabasePanels.add(databaseId);
+          vscode.postMessage({ type: 'fetch-database-details', databaseId });
+        }
+
+        renderDatabases(lastDatabases);
+        persistState();
+      }
+
+      function listDatabaseBackups(databaseId) {
+        if (expandedDatabaseBackupPanels.has(databaseId)) {
+          expandedDatabaseBackupPanels.delete(databaseId);
+          renderDatabases(lastDatabases);
+          persistState();
+          return;
+        }
+
+        expandedDatabaseBackupPanels.add(databaseId);
+
+        if (!databaseBackupsById[databaseId]) {
+          loadingDatabaseBackupPanels.add(databaseId);
+          vscode.postMessage({ type: 'fetch-database-backups', databaseId });
+        }
+
+        renderDatabases(lastDatabases);
+        persistState();
+      }
+
+      function createDatabaseBackup(databaseId) {
+        loadingDatabaseBackupPanels.add(databaseId);
+        renderDatabases(lastDatabases);
+        vscode.postMessage({ type: 'create-database-backup', databaseId });
+      }
+
+      function restoreDatabaseBackup(databaseId, backupId) {
+        vscode.postMessage({ type: 'restore-database-backup', databaseId, backupId });
       }
 
       function showDeploymentDetails(deploymentId) {
@@ -1352,6 +1477,30 @@
               : [];
             loadingEnvPanels.delete(message.applicationId);
             renderApplications(lastApplications);
+            persistState();
+            break;
+          case 'service-details-data':
+            serviceDetailsById[message.serviceId] = Array.isArray(message.details)
+              ? message.details
+              : [];
+            loadingServicePanels.delete(message.serviceId);
+            renderServices(lastServices);
+            persistState();
+            break;
+          case 'database-details-data':
+            databaseDetailsById[message.databaseId] = Array.isArray(message.details)
+              ? message.details
+              : [];
+            loadingDatabasePanels.delete(message.databaseId);
+            renderDatabases(lastDatabases);
+            persistState();
+            break;
+          case 'database-backups-data':
+            databaseBackupsById[message.databaseId] = Array.isArray(message.backups)
+              ? message.backups
+              : [];
+            loadingDatabaseBackupPanels.delete(message.databaseId);
+            renderDatabases(lastDatabases);
             persistState();
             break;
         }
@@ -1626,6 +1775,38 @@
           );
         }
 
+        if (expandedServicePanels.has(service.id)) {
+          const detailsPanel = createElement('div', 'env-panel');
+
+          if (loadingServicePanels.has(service.id)) {
+            detailsPanel.appendChild(
+              createElement('div', 'env-empty', t('serviceDetailsLoading'))
+            );
+          } else {
+            const details = serviceDetailsById[service.id] || [];
+            if (!Array.isArray(details) || details.length === 0) {
+              detailsPanel.appendChild(
+                createElement('div', 'env-empty', t('serviceDetailsEmpty'))
+              );
+            } else {
+              details.forEach((item) => {
+                const row = createElement('div', 'env-row');
+                row.appendChild(createElement('span', 'env-key', item.key));
+                row.appendChild(
+                  createElement(
+                    'span',
+                    'value',
+                    String(item.value || t('notAvailable'))
+                  )
+                );
+                detailsPanel.appendChild(row);
+              });
+            }
+          }
+
+          cardMain.appendChild(detailsPanel);
+        }
+
         const cardFooter = createElement('div', 'card-footer');
         cardFooter.appendChild(
           createElement('span', 'status', String(service.status || 'unknown'))
@@ -1648,6 +1829,11 @@
         restartButton.addEventListener('click', () => restartService(service.id));
         buttonGroup.appendChild(restartButton);
 
+        const detailsButton = createElement('button', 'secondary-button', t('details'));
+        detailsButton.type = 'button';
+        detailsButton.addEventListener('click', () => listServiceDetails(service.id));
+        buttonGroup.appendChild(detailsButton);
+
         cardFooter.appendChild(buttonGroup);
 
         card.appendChild(cardMain);
@@ -1667,6 +1853,86 @@
           cardMain.appendChild(
             createElement('div', 'card-subtitle', database.description)
           );
+        }
+
+        if (expandedDatabasePanels.has(database.id)) {
+          const detailsPanel = createElement('div', 'env-panel');
+
+          if (loadingDatabasePanels.has(database.id)) {
+            detailsPanel.appendChild(
+              createElement('div', 'env-empty', t('databaseDetailsLoading'))
+            );
+          } else {
+            const details = databaseDetailsById[database.id] || [];
+            if (!Array.isArray(details) || details.length === 0) {
+              detailsPanel.appendChild(
+                createElement('div', 'env-empty', t('databaseDetailsEmpty'))
+              );
+            } else {
+              details.forEach((item) => {
+                const row = createElement('div', 'env-row');
+                row.appendChild(createElement('span', 'env-key', item.key));
+                row.appendChild(
+                  createElement(
+                    'span',
+                    'value',
+                    String(item.value || t('notAvailable'))
+                  )
+                );
+                detailsPanel.appendChild(row);
+              });
+            }
+          }
+
+          cardMain.appendChild(detailsPanel);
+        }
+
+        if (expandedDatabaseBackupPanels.has(database.id)) {
+          const backupsPanel = createElement('div', 'env-panel');
+
+          if (loadingDatabaseBackupPanels.has(database.id)) {
+            backupsPanel.appendChild(
+              createElement('div', 'env-empty', t('backupLoading'))
+            );
+          } else {
+            const backups = databaseBackupsById[database.id] || [];
+            if (!Array.isArray(backups) || backups.length === 0) {
+              backupsPanel.appendChild(
+                createElement('div', 'env-empty', t('backupEmpty'))
+              );
+            } else {
+              backups.forEach((backup) => {
+                const row = createElement('div', 'env-row');
+                const details = [
+                  backup.name || backup.id,
+                  backup.createdAt ? `${t('backupCreatedAt')} ${backup.createdAt}` : '',
+                  backup.size ? `${t('backupSize')} ${backup.size}` : '',
+                  backup.status || '',
+                ]
+                  .filter((item) => !!item)
+                  .join(' • ');
+
+                row.appendChild(createElement('span', 'env-key', details));
+
+                const actions = createElement('div', 'env-actions');
+                const restoreButton = createElement(
+                  'button',
+                  'secondary-button',
+                  t('restoreBackup')
+                );
+                restoreButton.type = 'button';
+                restoreButton.addEventListener('click', () =>
+                  restoreDatabaseBackup(database.id, backup.id)
+                );
+                actions.appendChild(restoreButton);
+                row.appendChild(actions);
+
+                backupsPanel.appendChild(row);
+              });
+            }
+          }
+
+          cardMain.appendChild(backupsPanel);
         }
 
         const cardFooter = createElement('div', 'card-footer');
@@ -1690,6 +1956,25 @@
         restartButton.type = 'button';
         restartButton.addEventListener('click', () => restartDatabase(database.id));
         buttonGroup.appendChild(restartButton);
+
+        const detailsButton = createElement('button', 'secondary-button', t('details'));
+        detailsButton.type = 'button';
+        detailsButton.addEventListener('click', () => listDatabaseDetails(database.id));
+        buttonGroup.appendChild(detailsButton);
+
+        const backupsButton = createElement('button', 'secondary-button', t('backups'));
+        backupsButton.type = 'button';
+        backupsButton.addEventListener('click', () => listDatabaseBackups(database.id));
+        buttonGroup.appendChild(backupsButton);
+
+        const createBackupButton = createElement(
+          'button',
+          'secondary-button',
+          t('createBackup')
+        );
+        createBackupButton.type = 'button';
+        createBackupButton.addEventListener('click', () => createDatabaseBackup(database.id));
+        buttonGroup.appendChild(createBackupButton);
 
         cardFooter.appendChild(buttonGroup);
 

@@ -39,8 +39,16 @@ suite('Provider Runtime Guards', () => {
       isValidCoolifyDeployment({
         id: 'dep-1',
         application_id: 'app-1',
-        application_name: 'My App',
         status: 'queued',
+      }),
+      true
+    );
+
+    assert.strictEqual(
+      isValidCoolifyDeployment({
+        id: 42,
+        application_name: 'My App',
+        status: 'running',
       }),
       true
     );
@@ -49,7 +57,7 @@ suite('Provider Runtime Guards', () => {
       isValidCoolifyDeployment({
         id: 'dep-1',
         application_id: '',
-        application_name: 'My App',
+        application_name: '',
         status: 'queued',
       }),
       false

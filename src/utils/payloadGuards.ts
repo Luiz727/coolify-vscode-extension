@@ -34,11 +34,21 @@ export function isValidCoolifyDeployment(
   }
 
   const candidate = value as Record<string, unknown>;
+  const hasValidId =
+    isNonEmptyString(candidate.id) ||
+    (typeof candidate.id === 'number' && Number.isFinite(candidate.id));
+  const hasValidStatus = isNonEmptyString(candidate.status);
+  const hasValidApplicationId =
+    candidate.application_id === undefined ||
+    isNonEmptyString(candidate.application_id);
+  const hasValidApplicationName =
+    candidate.application_name === undefined ||
+    isNonEmptyString(candidate.application_name);
+
   return (
-    isNonEmptyString(candidate.id) &&
-    isNonEmptyString(candidate.application_id) &&
-    isNonEmptyString(candidate.application_name) &&
-    isNonEmptyString(candidate.status)
+    hasValidId &&
+    hasValidStatus &&
+    (hasValidApplicationId || hasValidApplicationName)
   );
 }
 

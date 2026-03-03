@@ -51,6 +51,14 @@ export interface DatabaseResource {
   description?: string;
 }
 
+export interface DatabaseBackupResource {
+  id: string;
+  name?: string;
+  status?: string;
+  created_at?: string;
+  size?: string;
+}
+
 export interface ApplicationLifecycleResponse {
   message?: string;
   deployment_uuid?: string;
@@ -128,6 +136,113 @@ export class CoolifyService {
   ): Promise<T> {
     const payload = await this.fetchWithAuth<unknown>(endpoint);
     return parseObjectPayload(payload, guard, entityName);
+  }
+
+  private extractBackupId(value: unknown): string {
+    if (!value || typeof value !== 'object') {
+      return '';
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const idCandidates = [
+      candidate.id,
+      candidate.uuid,
+      candidate.backup_uuid,
+      candidate.backup_id,
+      candidate.filename,
+      candidate.name,
+    ];
+
+    for (const idCandidate of idCandidates) {
+      if (typeof idCandidate === 'string' && idCandidate.trim().length > 0) {
+        return idCandidate;
+      }
+      if (typeof idCandidate === 'number' && Number.isFinite(idCandidate)) {
+        return String(idCandidate);
+      }
+    }
+
+    return '';
+  }
+
+  private mapBackupItem(value: unknown): DatabaseBackupResource | undefined {
+    if (!value || typeof value !== 'object') {
+      return undefined;
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const id = this.extractBackupId(candidate);
+    if (!id) {
+      return undefined;
+    }
+
+    return {
+      id,
+      name:
+        typeof candidate.name === 'string'
+          ? candidate.name
+          : typeof candidate.filename === 'string'
+            ? candidate.filename
+            : undefined,
+      status:
+        typeof candidate.status === 'string'
+          ? candidate.status
+          : typeof candidate.state === 'string'
+            ? candidate.state
+            : undefined,
+      created_at:
+        typeof candidate.created_at === 'string'
+          ? candidate.created_at
+          : typeof candidate.createdAt === 'string'
+            ? candidate.createdAt
+            : undefined,
+      size:
+        typeof candidate.size === 'string'
+          ? candidate.size
+          : typeof candidate.file_size === 'string'
+            ? candidate.file_size
+            : undefined,
+    };
+  }
+
+  private normalizeBackupCollection(payload: unknown): DatabaseBackupResource[] {
+    if (Array.isArray(payload)) {
+      return payload
+        .map((item) => this.mapBackupItem(item))
+        .filter((item): item is DatabaseBackupResource => !!item);
+    }
+
+    if (payload && typeof payload === 'object') {
+      const candidate = payload as Record<string, unknown>;
+      const arrayLike = [candidate.backups, candidate.items, candidate.data].find(
+        (value) => Array.isArray(value)
+      );
+
+      if (Array.isArray(arrayLike)) {
+        return arrayLike
+          .map((item) => this.mapBackupItem(item))
+          .filter((item): item is DatabaseBackupResource => !!item);
+      }
+    }
+
+    return [];
+  }
+
+  private async requestWithFallback<T>(
+    paths: string[],
+    options: RequestInit
+  ): Promise<T> {
+    let lastError: unknown;
+
+    for (const path of paths) {
+      try {
+        return await this.client.request<T>(path, options);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError;
   }
 
   async getApplications(): Promise<Application[]> {
@@ -321,6 +436,75 @@ export class CoolifyService {
 
   async restartDatabase(databaseUuid: string): Promise<string> {
     return this.executeDatabaseAction(databaseUuid, 'restart');
+  }
+
+  async listDatabaseBackups(
+    databaseUuid: string
+  ): Promise<DatabaseBackupResource[]> {
+    const candidates = [
+      `/api/v1/databases/${databaseUuid}/backups`,
+      `/api/v1/databases/${databaseUuid}/backup`,
+    ];
+
+    let lastError: unknown;
+    for (const endpoint of candidates) {
+      try {
+        const payload = await this.fetchWithAuth<unknown>(endpoint);
+        const backups = this.normalizeBackupCollection(payload);
+        if (backups.length > 0 || endpoint.endsWith('/backups')) {
+          return backups;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    return [];
+  }
+
+  async createDatabaseBackup(databaseUuid: string): Promise<string> {
+    const response = await this.requestWithFallback<unknown>(
+      [
+        `/api/v1/databases/${databaseUuid}/backups`,
+        `/api/v1/databases/${databaseUuid}/backup`,
+      ],
+      {
+        method: 'POST',
+      }
+    );
+
+    if (isValidApplicationLifecycleResponse(response)) {
+      return response.message || 'Database backup requested.';
+    }
+
+    return 'Database backup requested.';
+  }
+
+  async restoreDatabaseBackup(
+    databaseUuid: string,
+    backupId: string
+  ): Promise<string> {
+    const encodedBackupId = encodeURIComponent(backupId);
+    const response = await this.requestWithFallback<unknown>(
+      [
+        `/api/v1/databases/${databaseUuid}/backups/${encodedBackupId}/restore`,
+        `/api/v1/databases/${databaseUuid}/backups/restore?backup_uuid=${encodedBackupId}`,
+        `/api/v1/databases/${databaseUuid}/restore?backup_uuid=${encodedBackupId}`,
+      ],
+      {
+        method: 'POST',
+      }
+    );
+
+    if (isValidApplicationLifecycleResponse(response)) {
+      return response.message || 'Database restore requested.';
+    }
+
+    return 'Database restore requested.';
   }
 
   async listEnvironmentVariables(
