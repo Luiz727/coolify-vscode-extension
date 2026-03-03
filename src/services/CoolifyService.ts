@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import { CoolifyApiError, HttpClient } from './HttpClient';
 
 interface Application {
   uuid: string;
@@ -25,21 +25,18 @@ interface Deployment {
 }
 
 export class CoolifyService {
-  constructor(private baseUrl: string, private token: string) {}
+  private readonly client: HttpClient;
+
+  constructor(private baseUrl: string, private token: string) {
+    this.client = new HttpClient({
+      baseUrl: this.baseUrl,
+      token: this.token,
+      timeoutMs: 10000,
+    });
+  }
 
   private async fetchWithAuth<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data as T;
+    return this.client.get<T>(endpoint);
   }
 
   async getApplications(): Promise<Application[]> {
@@ -52,19 +49,7 @@ export class CoolifyService {
 
   async startDeployment(uuid: string): Promise<boolean> {
     try {
-      const response = await fetch(
-        `${this.baseUrl}/api/v1/deploy?uuid=${uuid}`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${this.token}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to start deployment: ${response.statusText}`);
-      }
+      await this.client.get(`/api/v1/deploy?uuid=${uuid}`);
 
       return true;
     } catch (error) {
@@ -79,14 +64,8 @@ export class CoolifyService {
    */
   async verifyToken(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/version`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-        },
-      });
-
-      return response.ok;
+      await this.client.get('/api/v1/version');
+      return true;
     } catch (error) {
       console.error('Error verifying token:', error);
       return false;
@@ -99,11 +78,17 @@ export class CoolifyService {
    */
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/health`);
-      return response.ok;
+      const testClient = new HttpClient({
+        baseUrl: this.baseUrl,
+        timeoutMs: 10000,
+      });
+      await testClient.get('/api/health');
+      return true;
     } catch (error) {
       console.error('Error testing connection:', error);
       return false;
     }
   }
 }
+
+export { CoolifyApiError };

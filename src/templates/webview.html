@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"
+    />
     <style>
       body {
         font-family: var(--vscode-font-family);
@@ -242,11 +246,7 @@
     <div class="section">
       <div class="section-header">
         <h3>Applications</h3>
-        <button
-          class="refresh-button"
-          id="refresh-button"
-          onclick="refreshData()"
-        >
+        <button class="refresh-button" id="refresh-button" type="button">
           <span>↻ Force Refresh</span>
         </button>
       </div>
@@ -270,9 +270,14 @@
       </div>
     </div>
 
-    <script>
+    <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       let isRefreshing = false;
+      const refreshButton = document.getElementById('refresh-button');
+
+      if (refreshButton) {
+        refreshButton.addEventListener('click', refreshData);
+      }
 
       // Restore previous state
       const previousState = vscode.getState();
@@ -280,17 +285,19 @@
         updateUI(previousState.applications, previousState.deployments);
       }
 
+      function setRefreshing(refreshing) {
+        isRefreshing = refreshing;
+        if (!refreshButton) {
+          return;
+        }
+
+        refreshButton.classList.toggle('refreshing', refreshing);
+        refreshButton.disabled = refreshing;
+      }
+
       function refreshData() {
         if (isRefreshing) return;
-
-        isRefreshing = true;
-        const indicator = document.getElementById('refresh-indicator');
-        const button = document.getElementById('refresh-button');
-
-        indicator.style.display = 'block';
-        button.classList.add('refreshing');
-        button.disabled = true;
-
+        setRefreshing(true);
         vscode.postMessage({ type: 'refresh' });
       }
 
@@ -311,92 +318,110 @@
               deployments: message.deployments,
             });
             updateUI(message.applications, message.deployments);
-            isRefreshing = false;
-            const indicator = document.getElementById('refresh-indicator');
-            const button = document.getElementById('refresh-button');
-            indicator.style.display = 'none';
-            button.classList.remove('refreshing');
-            button.disabled = false;
+            setRefreshing(false);
             break;
           case 'deployment-status':
-            if (message.status === 'failed') {
-              deployingApps.delete(message.applicationId);
-              updateDeployButton(message.applicationId, false);
-            }
             break;
         }
       });
 
+      function createElement(tag, className, text) {
+        const element = document.createElement(tag);
+        if (className) {
+          element.className = className;
+        }
+        if (typeof text === 'string') {
+          element.textContent = text;
+        }
+        return element;
+      }
+
+      function createEmptyElement(text) {
+        return createElement('div', 'empty', text);
+      }
+
+      function createApplicationCard(app) {
+        const card = createElement('div', 'card');
+        const cardMain = createElement('div', 'card-main');
+
+        cardMain.appendChild(createElement('div', 'card-title', app.name || 'Unknown'));
+        cardMain.appendChild(
+          createElement('div', 'card-subtitle', app.fqdn || 'No URL configured')
+        );
+
+        const cardContent = createElement('div', 'card-content');
+        const fields = [
+          ['Repository:', app.git_repository || 'N/A'],
+          ['Branch:', app.git_branch || 'N/A'],
+          ['Last Updated:', formatDate(app.updated_at)],
+        ];
+
+        fields.forEach(([label, value]) => {
+          cardContent.appendChild(createElement('span', 'label', label));
+          cardContent.appendChild(createElement('span', 'value', value));
+        });
+
+        cardMain.appendChild(cardContent);
+
+        const cardFooter = createElement('div', 'card-footer');
+        cardFooter.appendChild(createElement('span', 'status', app.status || 'unknown'));
+
+        const deployButton = createElement('button', 'deploy-button', 'Deploy');
+        deployButton.type = 'button';
+        deployButton.addEventListener('click', () => deployApplication(app.id));
+        cardFooter.appendChild(deployButton);
+
+        card.appendChild(cardMain);
+        card.appendChild(cardFooter);
+        return card;
+      }
+
+      function createDeploymentCard(deployment) {
+        const card = createElement('div', 'card deployment-card');
+        const cardMain = createElement('div', 'card-main');
+
+        cardMain.appendChild(
+          createElement('div', 'card-title', deployment.applicationName || 'Unknown')
+        );
+        cardMain.appendChild(
+          createElement('div', 'deployment-time', 'Started ' + (deployment.startedAt || ''))
+        );
+        cardMain.appendChild(
+          createElement('div', 'commit-message', deployment.commit || 'No commit details')
+        );
+
+        const cardFooter = createElement('div', 'card-footer');
+        cardFooter.appendChild(
+          createElement('span', 'status deployment-status', deployment.status || 'running')
+        );
+
+        card.appendChild(cardMain);
+        card.appendChild(cardFooter);
+        return card;
+      }
+
       function updateUI(applications, deployments) {
         if (!applications || !deployments) return;
 
-        // Update Applications
         const appsContainer = document.getElementById('applications');
+        const appNodes = [];
         if (applications.length === 0) {
-          appsContainer.innerHTML =
-            '<div class="empty">No applications found</div>';
+          appNodes.push(createEmptyElement('No applications found'));
         } else {
-          appsContainer.innerHTML = applications
-            .map(
-              (app) => `
-                    <div class="card">
-                        <div class="card-main">
-                            <div class="card-title">${app.name}</div>
-                            <div class="card-subtitle">${
-                              app.fqdn || 'No URL configured'
-                            }</div>
-                            <div class="card-content">
-                                <span class="label">Repository:</span>
-                                <span class="value">${
-                                  app.git_repository || 'N/A'
-                                }</span>
-                                <span class="label">Branch:</span>
-                                <span class="value">${
-                                  app.git_branch || 'N/A'
-                                }</span>
-                                <span class="label">Last Updated:</span>
-                                <span class="value">${formatDate(
-                                  app.updated_at
-                                )}</span>
-                            </div>
-                        </div>
-                        <div class="card-footer">
-                            <span class="status">${app.status}</span>
-                            <button class="deploy-button" onclick="deployApplication('${
-                              app.id
-                            }')">
-                                Deploy
-                            </button>
-                        </div>
-                    </div>
-                `
-            )
-            .join('');
+          applications.forEach((app) => appNodes.push(createApplicationCard(app)));
         }
+        appsContainer.replaceChildren(...appNodes);
 
-        // Update Deployments
         const deploymentsContainer = document.getElementById('deployments');
+        const deploymentNodes = [];
         if (deployments.length === 0) {
-          deploymentsContainer.innerHTML =
-            '<div class="empty">No active deployments</div>';
+          deploymentNodes.push(createEmptyElement('No active deployments'));
         } else {
-          deploymentsContainer.innerHTML = deployments
-            .map(
-              (deployment) => `
-                    <div class="card deployment-card">
-                        <div class="card-main">
-                            <div class="card-title">${deployment.applicationName}</div>
-                            <div class="deployment-time">Started ${deployment.startedAt}</div>
-                            <div class="commit-message">${deployment.commit}</div>
-                        </div>
-                        <div class="card-footer">
-                            <span class="status deployment-status">${deployment.status}</span>
-                        </div>
-                    </div>
-                `
-            )
-            .join('');
+          deployments.forEach((deployment) =>
+            deploymentNodes.push(createDeploymentCard(deployment))
+          );
         }
+        deploymentsContainer.replaceChildren(...deploymentNodes);
       }
     </script>
   </body>

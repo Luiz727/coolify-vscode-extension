@@ -45,7 +45,7 @@ export function activate(context: vscode.ExtensionContext) {
         const serverUrl = await vscode.window.showInputBox({
           ignoreFocusOut: true,
           prompt: 'Enter your Coolify server URL along with the port',
-          placeHolder: 'e.g., http://127.0.0.1:8000',
+          placeHolder: 'e.g., https://coolify.example.com',
           validateInput: (value) => {
             if (!value) {
               return 'Server URL is required';
@@ -62,6 +62,22 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         const normalizedUrl = normalizeUrl(serverUrl);
+        const allowInsecureHttp = vscode.workspace
+          .getConfiguration('coolify')
+          .get<boolean>('allowInsecureHttp', false);
+
+        const parsedUrl = new URL(normalizedUrl);
+        if (parsedUrl.protocol === 'http:' && !allowInsecureHttp) {
+          throw new Error(
+            'Insecure HTTP is disabled. Use HTTPS or enable coolify.allowInsecureHttp in settings.'
+          );
+        }
+
+        if (parsedUrl.protocol === 'http:' && allowInsecureHttp) {
+          vscode.window.showWarningMessage(
+            'You are using an insecure HTTP connection. Your API token may be exposed on the network.'
+          );
+        }
 
         // Test server connection
         const testService = new CoolifyService(normalizedUrl, '');

@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"
+    />
     <style>
       body {
         font-family: var(--vscode-font-family);
@@ -65,7 +69,9 @@
       <img src="${logoUri}" alt="Coolify Logo" class="logo" />
       <h2>Coolify Deployments</h2>
       <p class="subtitle">Configure your Coolify server to get started</p>
-      <button class="configure-button" onclick="configure()">Configure</button>
+      <button class="configure-button" id="configure-button" type="button">
+        Configure
+      </button>
       <br />
       <a
         href="https://coolify.io/docs/api-reference/authorization#generate"
@@ -75,11 +81,16 @@
         Learn how to generate API token →
       </a>
     </div>
-    <script>
+    <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
 
       function configure() {
         vscode.postMessage({ type: 'configure' });
+      }
+
+      const configureButton = document.getElementById('configure-button');
+      if (configureButton) {
+        configureButton.addEventListener('click', configure);
       }
     </script>
   </body>

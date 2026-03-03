@@ -25,7 +25,7 @@ Before using this extension, ensure you have:
 
 1. Install the extension from the VS Code marketplace
 2. Configure the extension with:
-   - Your Coolify server IP address
+   - Your Coolify server URL (HTTPS recommended)
    - Your Coolify API token
 
 You can configure these settings by:
@@ -55,3 +55,10 @@ Initial release of VSCode Coolify Extension with the following features:
 
 - [Coolify Documentation](https://coolify.io/docs)
 - [Visual Studio Code's Extension API](http://code.visualstudio.com/api)
+
+## Security notes
+
+- The extension uses HTTPS by default when you omit the protocol.
+- Insecure HTTP connections are blocked by default.
+- If you must use HTTP in a trusted local network, enable `coolify.allowInsecureHttp` in VS Code settings.
+- Webview content is protected with CSP and nonce-based script policy.

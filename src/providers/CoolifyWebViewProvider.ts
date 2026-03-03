@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import { ConfigurationManager } from '../managers/ConfigurationManager';
-import { CoolifyService } from '../services/CoolifyService';
+import { CoolifyApiError, CoolifyService } from '../services/CoolifyService';
 
 // Types and Interfaces
 interface RetryConfig {
@@ -428,6 +426,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
   // HTML Generation
   private async getWebViewHtml(): Promise<string> {
+    const nonce = this.generateNonce();
+    const cspSource = this._view?.webview.cspSource || '';
     const htmlPath = vscode.Uri.joinPath(
       this._extensionUri,
       'dist',
@@ -435,10 +435,15 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       'webview.html'
     );
     const fileData = await vscode.workspace.fs.readFile(htmlPath);
-    return Buffer.from(fileData).toString('utf-8');
+    let html = Buffer.from(fileData).toString('utf-8');
+    html = html.replace(/\$\{nonce\}/g, nonce);
+    html = html.replace(/\$\{cspSource\}/g, cspSource);
+    return html;
   }
 
   private async getWelcomeHtml(): Promise<string> {
+    const nonce = this.generateNonce();
+    const cspSource = this._view?.webview.cspSource || '';
     const logoUri = this._view?.webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'public', 'logo.svg')
     );
@@ -453,20 +458,37 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     const fileData = await vscode.workspace.fs.readFile(welcomePath);
     let html = Buffer.from(fileData).toString('utf-8');
     html = html.replace('${logoUri}', logoUri?.toString() || '');
+    html = html.replace(/\$\{nonce\}/g, nonce);
+    html = html.replace(/\$\{cspSource\}/g, cspSource);
 
     return html;
+  }
+
+  private generateNonce(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let nonce = '';
+    for (let i = 0; i < 32; i++) {
+      nonce += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return nonce;
   }
 
   // Error Handling
   private handleError(message: string, error: unknown): void {
     console.error(`${message}:`, error);
     if (this.isViewValid()) {
-      if (error instanceof Error && error.message.includes('401')) {
+      if (this.isAuthenticationError(error)) {
         this.handleAuthenticationError();
+      } else if (error instanceof CoolifyApiError) {
+        vscode.window.showErrorMessage(error.message);
       } else {
         vscode.window.showErrorMessage(`${message}. Please try again.`);
       }
     }
+  }
+
+  private isAuthenticationError(error: unknown): boolean {
+    return error instanceof CoolifyApiError && error.type === 'auth';
   }
 
   private async handleAuthenticationError(): Promise<void> {
@@ -484,13 +506,17 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleRefreshError(error: unknown): Promise<void> {
-    if (error instanceof Error && error.message.includes('401')) {
+    if (this.isAuthenticationError(error)) {
       await this.handleAuthenticationError();
     } else {
       if (this.isViewValid()) {
-        vscode.window.showErrorMessage(
-          'Failed to refresh data. Please try again.'
-        );
+        if (error instanceof CoolifyApiError) {
+          vscode.window.showErrorMessage(error.message);
+        } else {
+          vscode.window.showErrorMessage(
+            'Failed to refresh data. Please try again.'
+          );
+        }
       }
     }
     throw error;

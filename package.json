@@ -25,6 +25,16 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Coolify",
+      "properties": {
+        "coolify.allowInsecureHttp": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow HTTP (insecure) connections to Coolify server. HTTPS is strongly recommended."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {

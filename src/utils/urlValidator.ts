@@ -1,8 +1,8 @@
 export function isValidUrl(urlString: string): boolean {
   try {
-    // Add http:// if no protocol is specified
+    // Add https:// if no protocol is specified
     if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
-      urlString = 'http://' + urlString;
+      urlString = 'https://' + urlString;
     }
 
     const url = new URL(urlString);
@@ -27,9 +27,9 @@ export function isValidUrl(urlString: string): boolean {
 }
 
 export function normalizeUrl(urlString: string): string {
-  // Add http:// if no protocol is specified
+  // Add https:// if no protocol is specified
   if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
-    urlString = 'http://' + urlString;
+    urlString = 'https://' + urlString;
   }
 
   // Remove trailing slash
