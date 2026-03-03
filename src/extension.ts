@@ -445,6 +445,249 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  async function executeServiceLifecycleCommand(
+    action: 'start' | 'stop' | 'restart'
+  ) {
+    try {
+      if (!webviewProvider) {
+        vscode.window.showErrorMessage('Coolify provider not initialized');
+        return;
+      }
+
+      const services = await webviewProvider.getServices();
+      if (!services.length) {
+        vscode.window.showInformationMessage('No services found');
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(
+        services.map((service) => ({
+          label: service.name,
+          description: service.status,
+          detail: service.description || `Status: ${service.status}`,
+          id: service.id,
+        })),
+        {
+          placeHolder: `Select a service to ${action}`,
+          title: `${action.charAt(0).toUpperCase() + action.slice(1)} Service`,
+        }
+      );
+
+      if (!selected) {
+        return;
+      }
+
+      let resultMessage = '';
+      switch (action) {
+        case 'start':
+          resultMessage = await webviewProvider.startService(selected.id);
+          break;
+        case 'stop':
+          resultMessage = await webviewProvider.stopService(selected.id);
+          break;
+        case 'restart':
+          resultMessage = await webviewProvider.restartService(selected.id);
+          break;
+      }
+
+      vscode.window.showInformationMessage(resultMessage);
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        error instanceof Error ? error.message : `Failed to ${action} service`
+      );
+    }
+  }
+
+  async function executeDatabaseLifecycleCommand(
+    action: 'start' | 'stop' | 'restart'
+  ) {
+    try {
+      if (!webviewProvider) {
+        vscode.window.showErrorMessage('Coolify provider not initialized');
+        return;
+      }
+
+      const databases = await webviewProvider.getDatabases();
+      if (!databases.length) {
+        vscode.window.showInformationMessage('No databases found');
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(
+        databases.map((database) => ({
+          label: database.name,
+          description: database.status,
+          detail: database.description || `Status: ${database.status}`,
+          id: database.id,
+        })),
+        {
+          placeHolder: `Select a database to ${action}`,
+          title: `${action.charAt(0).toUpperCase() + action.slice(1)} Database`,
+        }
+      );
+
+      if (!selected) {
+        return;
+      }
+
+      let resultMessage = '';
+      switch (action) {
+        case 'start':
+          resultMessage = await webviewProvider.startDatabase(selected.id);
+          break;
+        case 'stop':
+          resultMessage = await webviewProvider.stopDatabase(selected.id);
+          break;
+        case 'restart':
+          resultMessage = await webviewProvider.restartDatabase(selected.id);
+          break;
+      }
+
+      vscode.window.showInformationMessage(resultMessage);
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        error instanceof Error ? error.message : `Failed to ${action} database`
+      );
+    }
+  }
+
+  const listServicesCommand = vscode.commands.registerCommand(
+    'coolify.listServices',
+    async () => {
+      try {
+        if (!webviewProvider) {
+          vscode.window.showErrorMessage('Coolify provider not initialized');
+          return;
+        }
+
+        const services = await webviewProvider.getServices();
+        if (!services.length) {
+          vscode.window.showInformationMessage('No services found');
+          return;
+        }
+
+        const document = await vscode.workspace.openTextDocument({
+          language: 'json',
+          content: JSON.stringify(services, null, 2),
+        });
+        await vscode.window.showTextDocument(document, { preview: true });
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          error instanceof Error ? error.message : 'Failed to list services'
+        );
+      }
+    }
+  );
+
+  const listDatabasesCommand = vscode.commands.registerCommand(
+    'coolify.listDatabases',
+    async () => {
+      try {
+        if (!webviewProvider) {
+          vscode.window.showErrorMessage('Coolify provider not initialized');
+          return;
+        }
+
+        const databases = await webviewProvider.getDatabases();
+        if (!databases.length) {
+          vscode.window.showInformationMessage('No databases found');
+          return;
+        }
+
+        const document = await vscode.workspace.openTextDocument({
+          language: 'json',
+          content: JSON.stringify(databases, null, 2),
+        });
+        await vscode.window.showTextDocument(document, { preview: true });
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          error instanceof Error ? error.message : 'Failed to list databases'
+        );
+      }
+    }
+  );
+
+  const startServiceCommand = vscode.commands.registerCommand(
+    'coolify.startService',
+    async () => {
+      await executeServiceLifecycleCommand('start');
+    }
+  );
+
+  const stopServiceCommand = vscode.commands.registerCommand(
+    'coolify.stopService',
+    async () => {
+      await executeServiceLifecycleCommand('stop');
+    }
+  );
+
+  const restartServiceCommand = vscode.commands.registerCommand(
+    'coolify.restartService',
+    async () => {
+      await executeServiceLifecycleCommand('restart');
+    }
+  );
+
+  const startDatabaseCommand = vscode.commands.registerCommand(
+    'coolify.startDatabase',
+    async () => {
+      await executeDatabaseLifecycleCommand('start');
+    }
+  );
+
+  const stopDatabaseCommand = vscode.commands.registerCommand(
+    'coolify.stopDatabase',
+    async () => {
+      await executeDatabaseLifecycleCommand('stop');
+    }
+  );
+
+  const restartDatabaseCommand = vscode.commands.registerCommand(
+    'coolify.restartDatabase',
+    async () => {
+      await executeDatabaseLifecycleCommand('restart');
+    }
+  );
+
+  const listApplicationDeploymentsCommand = vscode.commands.registerCommand(
+    'coolify.listApplicationDeployments',
+    async () => {
+      try {
+        const selectedApplication = await selectApplication();
+        if (!selectedApplication || !webviewProvider) {
+          return;
+        }
+
+        const deployments = await webviewProvider.getDeploymentsByApplication(
+          selectedApplication.id,
+          0,
+          30
+        );
+
+        if (!deployments.length) {
+          vscode.window.showInformationMessage(
+            `No deployments found for ${selectedApplication.name}.`
+          );
+          return;
+        }
+
+        const document = await vscode.workspace.openTextDocument({
+          language: 'json',
+          content: JSON.stringify(deployments, null, 2),
+        });
+        await vscode.window.showTextDocument(document, {
+          preview: true,
+        });
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'Failed to list application deployments'
+        );
+      }
+    }
+  );
+
   async function selectApplication(
     presetApplicationId?: string
   ): Promise<{ id: string; name: string } | undefined> {
@@ -1429,6 +1672,15 @@ export function activate(context: vscode.ExtensionContext) {
     stopApplicationCommand,
     restartApplicationCommand,
     showLogsCommand,
+    listServicesCommand,
+    listDatabasesCommand,
+    startServiceCommand,
+    stopServiceCommand,
+    restartServiceCommand,
+    startDatabaseCommand,
+    stopDatabaseCommand,
+    restartDatabaseCommand,
+    listApplicationDeploymentsCommand,
     listEnvironmentVariablesCommand,
     createEnvironmentVariableCommand,
     updateEnvironmentVariableCommand,

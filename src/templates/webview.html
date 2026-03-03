@@ -549,6 +549,30 @@
       </div>
     </div>
 
+    <div class="section">
+      <div class="section-header">
+        <h3 id="services-title">Services</h3>
+      </div>
+      <div id="services" class="cards-container">
+        <div class="loading">
+          <div class="loading-spinner"></div>
+          <span id="loading-services">Loading services...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h3 id="databases-title">Databases</h3>
+      </div>
+      <div id="databases" class="cards-container">
+        <div class="loading">
+          <div class="loading-spinner"></div>
+          <span id="loading-databases">Loading databases...</span>
+        </div>
+      </div>
+    </div>
+
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const uiLanguage = '${uiLanguage}' === 'pt-BR' ? 'pt-BR' : 'en';
@@ -561,8 +585,14 @@
           loadingApplications: 'Loading applications...',
           deploymentsTitle: 'Active Deployments',
           loadingDeployments: 'Loading deployments...',
+          servicesTitle: 'Services',
+          loadingServices: 'Loading services...',
+          databasesTitle: 'Databases',
+          loadingDatabases: 'Loading databases...',
           noApplications: 'No applications found',
           noDeployments: 'No active deployments',
+          noServices: 'No services found',
+          noDatabases: 'No databases found',
           openInCoolify: 'Open',
           unknown: 'Unknown',
           noUrlConfigured: 'No URL configured',
@@ -616,8 +646,14 @@
           loadingApplications: 'Carregando aplicações...',
           deploymentsTitle: 'Deployments ativos',
           loadingDeployments: 'Carregando deployments...',
+          servicesTitle: 'Serviços',
+          loadingServices: 'Carregando serviços...',
+          databasesTitle: 'Bancos de dados',
+          loadingDatabases: 'Carregando bancos de dados...',
           noApplications: 'Nenhuma aplicação encontrada',
           noDeployments: 'Nenhum deployment ativo',
+          noServices: 'Nenhum serviço encontrado',
+          noDatabases: 'Nenhum banco de dados encontrado',
           openInCoolify: 'Abrir',
           unknown: 'Desconhecido',
           noUrlConfigured: 'Sem URL configurada',
@@ -678,6 +714,10 @@
           'loading-applications': t('loadingApplications'),
           'deployments-title': t('deploymentsTitle'),
           'loading-deployments': t('loadingDeployments'),
+          'services-title': t('servicesTitle'),
+          'loading-services': t('loadingServices'),
+          'databases-title': t('databasesTitle'),
+          'loading-databases': t('loadingDatabases'),
           'favorites-only-label': t('favoritesOnly'),
           'context-label': t('contextLabel'),
           'create-context-button': t('createContext'),
@@ -756,6 +796,8 @@
       let envSyncConflictStrategy = 'prompt';
       let lastApplications = [];
       let lastDeployments = [];
+      let lastServices = [];
+      let lastDatabases = [];
       let currentUiState = 'loading';
       const refreshButton = document.getElementById('refresh-button');
       const statusFilter = document.getElementById('status-filter');
@@ -900,6 +942,8 @@
         updateUI(
           previousState.applications,
           previousState.deployments,
+          previousState.services,
+          previousState.databases,
           availableContexts,
           activeContextName
         );
@@ -913,6 +957,8 @@
         vscode.setState({
           applications: lastApplications,
           deployments: lastDeployments,
+          services: lastServices,
+          databases: lastDatabases,
           currentUiState,
           selectedContainerStatus,
           showFavoritesOnly,
@@ -1074,6 +1120,30 @@
 
       function restartApplication(applicationId) {
         vscode.postMessage({ type: 'restart-app', applicationId });
+      }
+
+      function startService(serviceId) {
+        vscode.postMessage({ type: 'start-service', serviceId });
+      }
+
+      function stopService(serviceId) {
+        vscode.postMessage({ type: 'stop-service', serviceId });
+      }
+
+      function restartService(serviceId) {
+        vscode.postMessage({ type: 'restart-service', serviceId });
+      }
+
+      function startDatabase(databaseId) {
+        vscode.postMessage({ type: 'start-database', databaseId });
+      }
+
+      function stopDatabase(databaseId) {
+        vscode.postMessage({ type: 'stop-database', databaseId });
+      }
+
+      function restartDatabase(databaseId) {
+        vscode.postMessage({ type: 'restart-database', databaseId });
       }
 
       function showDeploymentDetails(deploymentId) {
@@ -1264,6 +1334,8 @@
             updateUI(
               message.applications,
               message.deployments,
+              message.services,
+              message.databases,
               message.contextNames,
               message.activeContextName,
               message.envSyncConflictStrategy
@@ -1538,17 +1610,107 @@
         return card;
       }
 
+      function createServiceCard(service) {
+        const card = createElement('div', 'card service-card');
+        const cardMain = createElement('div', 'card-main');
+
+        cardMain.appendChild(
+          createElement('div', 'card-title', service.name || t('unknown'))
+        );
+
+        if (service.description) {
+          cardMain.appendChild(
+            createElement('div', 'card-subtitle', service.description)
+          );
+        }
+
+        const cardFooter = createElement('div', 'card-footer');
+        cardFooter.appendChild(
+          createElement('span', 'status', String(service.status || 'unknown'))
+        );
+
+        const buttonGroup = createElement('div', 'button-group');
+
+        const startButton = createElement('button', 'secondary-button', t('start'));
+        startButton.type = 'button';
+        startButton.addEventListener('click', () => startService(service.id));
+        buttonGroup.appendChild(startButton);
+
+        const stopButton = createElement('button', 'secondary-button', t('stop'));
+        stopButton.type = 'button';
+        stopButton.addEventListener('click', () => stopService(service.id));
+        buttonGroup.appendChild(stopButton);
+
+        const restartButton = createElement('button', 'secondary-button', t('restart'));
+        restartButton.type = 'button';
+        restartButton.addEventListener('click', () => restartService(service.id));
+        buttonGroup.appendChild(restartButton);
+
+        cardFooter.appendChild(buttonGroup);
+
+        card.appendChild(cardMain);
+        card.appendChild(cardFooter);
+        return card;
+      }
+
+      function createDatabaseCard(database) {
+        const card = createElement('div', 'card database-card');
+        const cardMain = createElement('div', 'card-main');
+
+        cardMain.appendChild(
+          createElement('div', 'card-title', database.name || t('unknown'))
+        );
+
+        if (database.description) {
+          cardMain.appendChild(
+            createElement('div', 'card-subtitle', database.description)
+          );
+        }
+
+        const cardFooter = createElement('div', 'card-footer');
+        cardFooter.appendChild(
+          createElement('span', 'status', String(database.status || 'unknown'))
+        );
+
+        const buttonGroup = createElement('div', 'button-group');
+
+        const startButton = createElement('button', 'secondary-button', t('start'));
+        startButton.type = 'button';
+        startButton.addEventListener('click', () => startDatabase(database.id));
+        buttonGroup.appendChild(startButton);
+
+        const stopButton = createElement('button', 'secondary-button', t('stop'));
+        stopButton.type = 'button';
+        stopButton.addEventListener('click', () => stopDatabase(database.id));
+        buttonGroup.appendChild(stopButton);
+
+        const restartButton = createElement('button', 'secondary-button', t('restart'));
+        restartButton.type = 'button';
+        restartButton.addEventListener('click', () => restartDatabase(database.id));
+        buttonGroup.appendChild(restartButton);
+
+        cardFooter.appendChild(buttonGroup);
+
+        card.appendChild(cardMain);
+        card.appendChild(cardFooter);
+        return card;
+      }
+
       function updateUI(
         applications,
         deployments,
+        services,
+        databases,
         contextNames,
         activeContext,
         nextEnvSyncConflictStrategy
       ) {
-        if (!applications || !deployments) return;
+        if (!applications || !deployments || !services || !databases) return;
 
         lastApplications = applications;
         lastDeployments = deployments;
+        lastServices = services;
+        lastDatabases = databases;
         availableContexts = Array.isArray(contextNames) ? contextNames : availableContexts;
         activeContextName = activeContext || activeContextName;
         envSyncConflictStrategy =
@@ -1564,6 +1726,8 @@
         updateDeploymentFilterOptions(lastDeployments);
         renderApplications(lastApplications);
         renderDeployments(lastDeployments);
+        renderServices(lastServices);
+        renderDatabases(lastDatabases);
         persistState();
       }
 
@@ -1621,6 +1785,32 @@
           );
         }
         deploymentsContainer.replaceChildren(...deploymentNodes);
+      }
+
+      function renderServices(services) {
+        const servicesContainer = document.getElementById('services');
+        const serviceNodes = [];
+
+        if (!Array.isArray(services) || services.length === 0) {
+          serviceNodes.push(createEmptyElement(t('noServices')));
+        } else {
+          services.forEach((service) => serviceNodes.push(createServiceCard(service)));
+        }
+
+        servicesContainer.replaceChildren(...serviceNodes);
+      }
+
+      function renderDatabases(databases) {
+        const databasesContainer = document.getElementById('databases');
+        const databaseNodes = [];
+
+        if (!Array.isArray(databases) || databases.length === 0) {
+          databaseNodes.push(createEmptyElement(t('noDatabases')));
+        } else {
+          databases.forEach((database) => databaseNodes.push(createDatabaseCard(database)));
+        }
+
+        databasesContainer.replaceChildren(...databaseNodes);
       }
     </script>
   </body>

@@ -14,8 +14,11 @@ An extension that allows you to manage and trigger your Coolify application depl
 - Start, stop, and restart applications from Command Palette
 - Monitor active deployments in real-time
 - List deployments and inspect deployment details from Command Palette
+- List deployments by application (history) from Command Palette
 - Cancel in-progress deployments from Command Palette with confirmation
 - Open deployment logs directly from Command Palette
+- List services and start/stop/restart them from Command Palette and sidebar
+- List databases and start/stop/restart them from Command Palette and sidebar
 - Use `@coolify` in Copilot Chat for MVP actions:
    - Configure server URL and API token
    - List applications and check status

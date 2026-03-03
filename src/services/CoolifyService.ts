@@ -4,6 +4,8 @@ import {
   isValidApplicationLifecycleResponse,
   isValidCoolifyApplication,
   isValidCoolifyDeployment,
+  isValidCoolifyDatabase,
+  isValidCoolifyService,
   isValidEnvironmentVariable,
   parseArrayPayload,
   parseObjectPayload,
@@ -33,6 +35,20 @@ export interface Deployment {
   deployment_url: string;
   commit_message: string;
   logs?: string;
+}
+
+export interface ServiceResource {
+  uuid: string;
+  name: string;
+  status: string;
+  description?: string;
+}
+
+export interface DatabaseResource {
+  uuid: string;
+  name: string;
+  status: string;
+  description?: string;
 }
 
 export interface ApplicationLifecycleResponse {
@@ -130,6 +146,21 @@ export class CoolifyService {
     );
   }
 
+  async getDeploymentsByApplication(
+    applicationUuid: string,
+    skip = 0,
+    take = 10
+  ): Promise<Deployment[]> {
+    const safeSkip = Number.isFinite(skip) ? Math.max(0, skip) : 0;
+    const safeTake = Number.isFinite(take) ? Math.max(1, take) : 10;
+
+    return this.fetchValidatedArray(
+      `/api/v1/deployments/applications/${applicationUuid}?skip=${safeSkip}&take=${safeTake}`,
+      isValidCoolifyDeployment,
+      'application deployments'
+    );
+  }
+
   async getDeployment(deploymentId: string): Promise<Deployment> {
     return this.fetchValidatedObject(
       `/api/v1/deployments/${deploymentId}`,
@@ -196,6 +227,100 @@ export class CoolifyService {
 
   async restartApplication(applicationId: string): Promise<string> {
     return this.executeApplicationAction(applicationId, 'restart');
+  }
+
+  async getServices(): Promise<ServiceResource[]> {
+    return this.fetchValidatedArray(
+      '/api/v1/services',
+      isValidCoolifyService,
+      'services'
+    );
+  }
+
+  async getService(serviceUuid: string): Promise<ServiceResource> {
+    return this.fetchValidatedObject(
+      `/api/v1/services/${serviceUuid}`,
+      isValidCoolifyService,
+      'service'
+    );
+  }
+
+  private async executeServiceAction(
+    serviceUuid: string,
+    action: 'start' | 'stop' | 'restart'
+  ): Promise<string> {
+    const response = await this.client.get<unknown>(
+      `/api/v1/services/${serviceUuid}/${action}`
+    );
+
+    if (!isValidApplicationLifecycleResponse(response)) {
+      logger.warn('Invalid service action payload received', {
+        serviceUuid,
+        action,
+      });
+      return `Service ${action} request queued.`;
+    }
+
+    return response.message || `Service ${action} request queued.`;
+  }
+
+  async startService(serviceUuid: string): Promise<string> {
+    return this.executeServiceAction(serviceUuid, 'start');
+  }
+
+  async stopService(serviceUuid: string): Promise<string> {
+    return this.executeServiceAction(serviceUuid, 'stop');
+  }
+
+  async restartService(serviceUuid: string): Promise<string> {
+    return this.executeServiceAction(serviceUuid, 'restart');
+  }
+
+  async getDatabases(): Promise<DatabaseResource[]> {
+    return this.fetchValidatedArray(
+      '/api/v1/databases',
+      isValidCoolifyDatabase,
+      'databases'
+    );
+  }
+
+  async getDatabase(databaseUuid: string): Promise<DatabaseResource> {
+    return this.fetchValidatedObject(
+      `/api/v1/databases/${databaseUuid}`,
+      isValidCoolifyDatabase,
+      'database'
+    );
+  }
+
+  private async executeDatabaseAction(
+    databaseUuid: string,
+    action: 'start' | 'stop' | 'restart'
+  ): Promise<string> {
+    const response = await this.client.get<unknown>(
+      `/api/v1/databases/${databaseUuid}/${action}`
+    );
+
+    if (!isValidApplicationLifecycleResponse(response)) {
+      logger.warn('Invalid database action payload received', {
+        databaseUuid,
+        action,
+      });
+      return `Database ${action} request queued.`;
+    }
+
+    return response.message || `Database ${action} request queued.`;
+  }
+
+  async startDatabase(databaseUuid: string): Promise<string> {
+    return this.executeDatabaseAction(databaseUuid, 'start');
+  }
+
+  async stopDatabase(databaseUuid: string): Promise<string> {
+    return this.executeDatabaseAction(databaseUuid, 'stop');
+  }
+
+  async restartDatabase(databaseUuid: string): Promise<string> {
+    return this.executeDatabaseAction(databaseUuid, 'restart');
   }
 
   async listEnvironmentVariables(

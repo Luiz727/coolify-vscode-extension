@@ -49,7 +49,16 @@
     "onCommand:coolify.listDeployments",
     "onCommand:coolify.showDeploymentDetails",
     "onCommand:coolify.cancelDeployment",
-    "onCommand:coolify.showDeploymentLogs"
+    "onCommand:coolify.showDeploymentLogs",
+    "onCommand:coolify.listServices",
+    "onCommand:coolify.startService",
+    "onCommand:coolify.stopService",
+    "onCommand:coolify.restartService",
+    "onCommand:coolify.listDatabases",
+    "onCommand:coolify.startDatabase",
+    "onCommand:coolify.stopDatabase",
+    "onCommand:coolify.restartDatabase",
+    "onCommand:coolify.listApplicationDeployments"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -411,6 +420,42 @@
       {
         "command": "coolify.showDeploymentLogs",
         "title": "Coolify: Show Deployment Logs"
+      },
+      {
+        "command": "coolify.listServices",
+        "title": "Coolify: List Services"
+      },
+      {
+        "command": "coolify.startService",
+        "title": "Coolify: Start Service"
+      },
+      {
+        "command": "coolify.stopService",
+        "title": "Coolify: Stop Service"
+      },
+      {
+        "command": "coolify.restartService",
+        "title": "Coolify: Restart Service"
+      },
+      {
+        "command": "coolify.listDatabases",
+        "title": "Coolify: List Databases"
+      },
+      {
+        "command": "coolify.startDatabase",
+        "title": "Coolify: Start Database"
+      },
+      {
+        "command": "coolify.stopDatabase",
+        "title": "Coolify: Stop Database"
+      },
+      {
+        "command": "coolify.restartDatabase",
+        "title": "Coolify: Restart Database"
+      },
+      {
+        "command": "coolify.listApplicationDeployments",
+        "title": "Coolify: List Application Deployments"
       }
     ]
   },

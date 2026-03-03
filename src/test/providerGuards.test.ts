@@ -1,7 +1,9 @@
 import * as assert from 'assert';
 import {
   isValidApplicationLifecycleResponse,
+  isValidCoolifyDatabase,
   isValidEnvironmentVariable,
+  isValidCoolifyService,
   isNonEmptyString,
   isValidCoolifyApplication,
   isValidCoolifyDeployment,
@@ -133,5 +135,25 @@ suite('Provider Runtime Guards', () => {
     );
 
     assert.strictEqual(parsed.id, 'dep-1');
+  });
+
+  test('service and database guards validate minimal shape', () => {
+    assert.strictEqual(
+      isValidCoolifyService({ uuid: 'svc-1', name: 'redis', status: 'running' }),
+      true
+    );
+    assert.strictEqual(
+      isValidCoolifyService({ uuid: 'svc-1', name: '', status: 'running' }),
+      false
+    );
+
+    assert.strictEqual(
+      isValidCoolifyDatabase({ uuid: 'db-1', name: 'postgres', status: 'running' }),
+      true
+    );
+    assert.strictEqual(
+      isValidCoolifyDatabase({ uuid: '', name: 'postgres', status: 'running' }),
+      false
+    );
   });
 });

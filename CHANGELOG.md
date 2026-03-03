@@ -47,4 +47,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Architecture: add explicit UI state machine (`unconfigured`, `loading`, `ready`, `error`) with provider-driven transitions and webview state feedback banner.
 - UX: add context operation actions in sidebar (`create`, `delete`, `configure`, `reconfigure`) to close operational parity with Command Palette.
 - Docs: add operational guide with support matrix, troubleshooting playbook, and expanded security guidance.
+- Feature: expand Coolify API surface with services/databases lifecycle commands and application deployment history listing.
+- UX: add sidebar sections for services and databases with inline start/stop/restart actions.
 - Docs: add security notes for transport configuration.

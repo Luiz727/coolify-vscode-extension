@@ -1,8 +1,10 @@
 import type {
   Application as CoolifyApplication,
   ApplicationLifecycleResponse,
+  DatabaseResource,
   Deployment as CoolifyDeployment,
   EnvironmentVariable,
+  ServiceResource,
 } from '../services/CoolifyService';
 
 export function isNonEmptyString(value: unknown): value is string {
@@ -99,4 +101,32 @@ export function parseObjectPayload<T>(
   }
 
   return payload;
+}
+
+export function isValidCoolifyService(value: unknown): value is ServiceResource {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    isNonEmptyString(candidate.uuid) &&
+    isNonEmptyString(candidate.name) &&
+    isNonEmptyString(candidate.status)
+  );
+}
+
+export function isValidCoolifyDatabase(
+  value: unknown
+): value is DatabaseResource {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    isNonEmptyString(candidate.uuid) &&
+    isNonEmptyString(candidate.name) &&
+    isNonEmptyString(candidate.status)
+  );
 }
