@@ -11,7 +11,11 @@ An extension that allows you to manage and trigger your Coolify application depl
 - View all your Coolify applications in VS Code
 - Track deployment status of your applications
 - Trigger new deployments directly from VS Code
+- Start, stop, and restart applications from Command Palette
 - Monitor active deployments in real-time
+- List deployments and inspect deployment details from Command Palette
+- Cancel in-progress deployments from Command Palette with confirmation
+- Open deployment logs directly from Command Palette
 
 ## Prerequisites
 

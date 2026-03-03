@@ -160,9 +160,11 @@ Hoje parece haver apenas um servidor/token por vez.
 - Confirmação para operações destrutivas.
 - Mensagens de sucesso/erro mais orientadas a ação.
 - Botão de “abrir no Coolify” (recurso selecionado).
+- Regra de paridade UX: toda função operacional nova deve ter ação equivalente no sidebar (webview), não apenas na Command Palette.
 
 **Critério de aceite**
 - Fluxos principais sem ambiguidade e sem “silêncio” em erro.
+- Funções críticas (deploy, lifecycle, logs, cancelamento, detalhes) acessíveis diretamente no sidebar com feedback visual.
 
 ---
 
@@ -309,6 +311,7 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 - [ ] Deployments avançados (get/cancel/logs).
 - [ ] Multi-contexto.
 - [ ] Env vars CRUD + sync.
+- [ ] Paridade Command Palette ↔ Sidebar para funções operacionais.
 
 ## Engenharia
 - [ ] Testes unitários e integração reais.
@@ -335,5 +338,19 @@ Ordem de implementação recomendada:
 2. Robustez de API e testes.
 3. Funcionalidades mais usadas do CLI (logs/deploy cancel/lifecycle app).
 4. Multi-contexto e env vars.
+
+---
+
+## 14) Regra de implementação contínua (Sidebar First)
+
+Para as próximas entregas, aplicar esta regra em todo PR:
+
+1. Implementar a funcionalidade no serviço/comando.
+2. Expor ação correspondente no sidebar (botão/toggle/menu no card/seção relevante).
+3. Garantir feedback visual no sidebar (loading/sucesso/erro/estado vazio).
+4. Garantir consistência com filtros/idioma/favoritos quando aplicável.
+
+**Definition of Done adicional**
+- Sem “feature órfã” apenas em comando: se houver comando novo de operação, deve existir caminho equivalente no sidebar.
 
 Essa sequência maximiza segurança e valor para usuário sem inflar complexidade cedo demais.

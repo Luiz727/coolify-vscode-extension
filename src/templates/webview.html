@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${uiLanguage}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -23,6 +23,10 @@
         gap: 16px;
       }
 
+      .context-section {
+        gap: 8px;
+      }
+
       .section-header {
         position: relative;
         display: flex;
@@ -37,6 +41,55 @@
         font-size: 14px;
         font-weight: 600;
         color: var(--vscode-foreground);
+      }
+
+      .header-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .filter-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: -4px;
+      }
+
+      .favorite-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+      }
+
+      .favorite-toggle input {
+        margin: 0;
+      }
+
+      .filter-label {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+      }
+
+      .status-filter {
+        padding: 4px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--vscode-widget-border);
+        background: var(
+          --vscode-dropdown-background,
+          var(--vscode-input-background)
+        );
+        color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+        font-size: 12px;
+        min-width: 140px;
+      }
+
+      .context-select {
+        min-width: 180px;
       }
 
       .refresh-button {
@@ -70,10 +123,39 @@
         gap: 12px;
       }
 
+      .application-card {
+        position: relative;
+      }
+
       .card-main {
         display: flex;
         flex-direction: column;
         gap: 8px;
+        padding-right: 28px;
+      }
+
+      .favorite-button {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid var(--vscode-widget-border);
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .favorite-button:hover {
+        background: var(--vscode-list-hoverBackground);
+      }
+
+      .favorite-button.favorite-active {
+        color: var(--vscode-charts-yellow);
+        border-color: var(--vscode-charts-yellow);
       }
 
       .card-title {
@@ -135,10 +217,68 @@
         text-overflow: ellipsis;
       }
 
+      .status-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .health-status {
+        border: 1px solid transparent;
+        background: var(--vscode-editor-background);
+      }
+
+      .status-health-healthy {
+        color: var(--vscode-charts-green);
+        border-color: var(--vscode-charts-green);
+      }
+
+      .status-health-unhealthy {
+        color: var(--vscode-charts-red);
+        border-color: var(--vscode-charts-red);
+      }
+
+      .status-health-starting {
+        color: var(--vscode-charts-yellow);
+        border-color: var(--vscode-charts-yellow);
+      }
+
+      .status-health-unknown {
+        color: var(--vscode-descriptionForeground);
+        border-color: var(--vscode-widget-border);
+      }
+
       .deployment-status {
+        border: 1px solid transparent;
+        background: var(--vscode-editor-background);
+      }
+
+      .deployment-status-running {
+        color: var(--vscode-charts-blue);
+        border-color: var(--vscode-charts-blue);
         animation: pulse 2s infinite;
-        background: var(--vscode-statusBarItem-warningBackground);
-        color: var(--vscode-statusBarItem-warningForeground);
+      }
+
+      .deployment-status-queued {
+        color: var(--vscode-charts-yellow);
+        border-color: var(--vscode-charts-yellow);
+        animation: pulse 2s infinite;
+      }
+
+      .deployment-status-success {
+        color: var(--vscode-charts-green);
+        border-color: var(--vscode-charts-green);
+      }
+
+      .deployment-status-failed {
+        color: var(--vscode-charts-red);
+        border-color: var(--vscode-charts-red);
+      }
+
+      .deployment-status-canceled {
+        color: var(--vscode-descriptionForeground);
+        border-color: var(--vscode-widget-border);
       }
 
       .deployment-card {
@@ -175,6 +315,27 @@
 
       .deploy-button:hover {
         background: var(--vscode-button-hoverBackground);
+      }
+
+      .secondary-button {
+        padding: 4px 10px;
+        background: transparent;
+        color: var(--vscode-button-foreground);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .secondary-button:hover {
+        background: var(--vscode-list-hoverBackground);
+      }
+
+      .button-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
       }
 
       .loading {
@@ -243,46 +404,290 @@
     </style>
   </head>
   <body>
+    <div class="section context-section">
+      <div class="filter-row">
+        <span class="filter-label" id="context-label">Context:</span>
+        <select id="context-select" class="status-filter context-select" title="Select context"></select>
+      </div>
+    </div>
+
     <div class="section">
       <div class="section-header">
-        <h3>Applications</h3>
-        <button class="refresh-button" id="refresh-button" type="button">
-          <span>↻ Force Refresh</span>
-        </button>
+        <h3 id="applications-title">Applications</h3>
+        <div class="header-controls">
+          <button class="refresh-button" id="refresh-button" type="button">
+            <span id="refresh-label">↻ Force Refresh</span>
+          </button>
+        </div>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label" id="filter-label">Container status:</span>
+        <select id="status-filter" class="status-filter" title="Filter by container status">
+          <option value="all">All containers</option>
+        </select>
+        <label class="favorite-toggle" for="favorites-only-toggle">
+          <input type="checkbox" id="favorites-only-toggle" />
+          <span id="favorites-only-label">Favorites only</span>
+        </label>
       </div>
       <div id="applications" class="cards-container">
         <div class="loading">
           <div class="loading-spinner"></div>
-          Loading applications...
+          <span id="loading-applications">Loading applications...</span>
         </div>
       </div>
     </div>
 
     <div class="section">
       <div class="section-header">
-        <h3>Active Deployments</h3>
+        <h3 id="deployments-title">Active Deployments</h3>
       </div>
       <div id="deployments" class="cards-container">
         <div class="loading">
           <div class="loading-spinner"></div>
-          Loading deployments...
+          <span id="loading-deployments">Loading deployments...</span>
         </div>
       </div>
     </div>
 
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const uiLanguage = '${uiLanguage}' === 'pt-BR' ? 'pt-BR' : 'en';
+      const i18n = {
+        en: {
+          applicationsTitle: 'Applications',
+          refreshLabel: '↻ Force Refresh',
+          filterLabel: 'Container status:',
+          filterAll: 'All containers',
+          loadingApplications: 'Loading applications...',
+          deploymentsTitle: 'Active Deployments',
+          loadingDeployments: 'Loading deployments...',
+          noApplications: 'No applications found',
+          noDeployments: 'No active deployments',
+          unknown: 'Unknown',
+          noUrlConfigured: 'No URL configured',
+          notAvailable: 'N/A',
+          repository: 'Repository:',
+          branch: 'Branch:',
+          lastUpdated: 'Last Updated:',
+          start: 'Start',
+          stop: 'Stop',
+          restart: 'Restart',
+          deploy: 'Deploy',
+          details: 'Details',
+          logs: 'Logs',
+          cancel: 'Cancel',
+          started: 'Started',
+          noCommitDetails: 'No commit details',
+          healthPrefix: 'health:',
+          favoriteAdd: 'Add to favorites',
+          favoriteRemove: 'Remove from favorites',
+          favoritesOnly: 'Favorites only',
+          contextLabel: 'Context:',
+          noContexts: 'No contexts',
+          envs: 'Envs',
+          addEnv: 'Add Env',
+        },
+        'pt-BR': {
+          applicationsTitle: 'Aplicações',
+          refreshLabel: '↻ Atualizar',
+          filterLabel: 'Status do container:',
+          filterAll: 'Todos os containers',
+          loadingApplications: 'Carregando aplicações...',
+          deploymentsTitle: 'Deployments ativos',
+          loadingDeployments: 'Carregando deployments...',
+          noApplications: 'Nenhuma aplicação encontrada',
+          noDeployments: 'Nenhum deployment ativo',
+          unknown: 'Desconhecido',
+          noUrlConfigured: 'Sem URL configurada',
+          notAvailable: 'N/D',
+          repository: 'Repositório:',
+          branch: 'Branch:',
+          lastUpdated: 'Última atualização:',
+          start: 'Iniciar',
+          stop: 'Parar',
+          restart: 'Reiniciar',
+          deploy: 'Deploy',
+          details: 'Detalhes',
+          logs: 'Logs',
+          cancel: 'Cancelar',
+          started: 'Iniciado',
+          noCommitDetails: 'Sem detalhes de commit',
+          healthPrefix: 'saúde:',
+          favoriteAdd: 'Adicionar aos favoritos',
+          favoriteRemove: 'Remover dos favoritos',
+          favoritesOnly: 'Somente favoritas',
+          contextLabel: 'Contexto:',
+          noContexts: 'Sem contextos',
+          envs: 'Envs',
+          addEnv: 'Add Env',
+        },
+      };
+
+      function t(key) {
+        const translations = i18n[uiLanguage] || i18n.en;
+        return translations[key] || i18n.en[key] || key;
+      }
+
+      function applyStaticTranslations() {
+        const translationsMap = {
+          'applications-title': t('applicationsTitle'),
+          'refresh-label': t('refreshLabel'),
+          'filter-label': t('filterLabel'),
+          'loading-applications': t('loadingApplications'),
+          'deployments-title': t('deploymentsTitle'),
+          'loading-deployments': t('loadingDeployments'),
+          'favorites-only-label': t('favoritesOnly'),
+          'context-label': t('contextLabel'),
+        };
+
+        Object.entries(translationsMap).forEach(([id, value]) => {
+          const element = document.getElementById(id);
+          if (element) {
+            element.textContent = value;
+          }
+        });
+
+        const initialFilterOption = document.querySelector(
+          '#status-filter option[value="all"]'
+        );
+        if (initialFilterOption) {
+          initialFilterOption.textContent = t('filterAll');
+        }
+      }
+
       let isRefreshing = false;
+      let selectedContainerStatus = 'all';
+      let showFavoritesOnly = false;
+      let favoriteApplicationIds = new Set();
+      let availableContexts = [];
+      let activeContextName = '';
+      let lastApplications = [];
+      let lastDeployments = [];
       const refreshButton = document.getElementById('refresh-button');
+      const statusFilter = document.getElementById('status-filter');
+      const favoritesOnlyToggle = document.getElementById('favorites-only-toggle');
+      const contextSelect = document.getElementById('context-select');
+
+      applyStaticTranslations();
 
       if (refreshButton) {
         refreshButton.addEventListener('click', refreshData);
       }
 
+      if (statusFilter) {
+        statusFilter.addEventListener('change', (event) => {
+          selectedContainerStatus = event.target.value;
+          renderApplications(lastApplications);
+          persistState();
+        });
+      }
+
+      if (favoritesOnlyToggle) {
+        favoritesOnlyToggle.addEventListener('change', (event) => {
+          showFavoritesOnly = !!event.target.checked;
+          renderApplications(lastApplications);
+          persistState();
+        });
+      }
+
+      if (contextSelect) {
+        contextSelect.addEventListener('change', (event) => {
+          const nextContextName = event.target.value;
+          if (!nextContextName || nextContextName === activeContextName) {
+            return;
+          }
+
+          activeContextName = nextContextName;
+          persistState();
+          vscode.postMessage({ type: 'switch-context', contextName: nextContextName });
+        });
+      }
+
       // Restore previous state
       const previousState = vscode.getState();
       if (previousState) {
-        updateUI(previousState.applications, previousState.deployments);
+        selectedContainerStatus = previousState.selectedContainerStatus || 'all';
+        showFavoritesOnly = !!previousState.showFavoritesOnly;
+        favoriteApplicationIds = new Set(previousState.favoriteApplicationIds || []);
+        availableContexts = previousState.contextNames || [];
+        activeContextName = previousState.activeContextName || '';
+
+        if (favoritesOnlyToggle) {
+          favoritesOnlyToggle.checked = showFavoritesOnly;
+        }
+
+        updateContextSelector(availableContexts, activeContextName);
+
+        updateUI(
+          previousState.applications,
+          previousState.deployments,
+          availableContexts,
+          activeContextName
+        );
+      }
+
+      function persistState() {
+        vscode.setState({
+          applications: lastApplications,
+          deployments: lastDeployments,
+          selectedContainerStatus,
+          showFavoritesOnly,
+          favoriteApplicationIds: Array.from(favoriteApplicationIds),
+          contextNames: availableContexts,
+          activeContextName,
+        });
+      }
+
+      function updateContextSelector(contextNames, selectedContextName) {
+        if (!contextSelect) {
+          return;
+        }
+
+        const names = Array.isArray(contextNames) ? contextNames : [];
+        const options =
+          names.length > 0
+            ? names
+            : [t('noContexts')];
+
+        const optionNodes = options.map((contextName) => {
+          const option = document.createElement('option');
+          option.value = contextName;
+          option.textContent = contextName;
+          return option;
+        });
+
+        contextSelect.replaceChildren(...optionNodes);
+        contextSelect.value =
+          selectedContextName && options.includes(selectedContextName)
+            ? selectedContextName
+            : options[0] || '';
+      }
+
+      function toggleFavorite(applicationId) {
+        if (favoriteApplicationIds.has(applicationId)) {
+          favoriteApplicationIds.delete(applicationId);
+        } else {
+          favoriteApplicationIds.add(applicationId);
+        }
+
+        renderApplications(lastApplications);
+        persistState();
+      }
+
+      function sortApplicationsWithFavorites(applications) {
+        return [...applications].sort((a, b) => {
+          const aFavorite = favoriteApplicationIds.has(a.id) ? 1 : 0;
+          const bFavorite = favoriteApplicationIds.has(b.id) ? 1 : 0;
+
+          if (aFavorite !== bFavorite) {
+            return bFavorite - aFavorite;
+          }
+
+          const aName = String(a.name || '').toLowerCase();
+          const bName = String(b.name || '').toLowerCase();
+          return aName.localeCompare(bName);
+        });
       }
 
       function setRefreshing(refreshing) {
@@ -305,19 +710,154 @@
         vscode.postMessage({ type: 'deploy', applicationId });
       }
 
+      function startApplication(applicationId) {
+        vscode.postMessage({ type: 'start-app', applicationId });
+      }
+
+      function stopApplication(applicationId) {
+        vscode.postMessage({ type: 'stop-app', applicationId });
+      }
+
+      function restartApplication(applicationId) {
+        vscode.postMessage({ type: 'restart-app', applicationId });
+      }
+
+      function showDeploymentDetails(deploymentId) {
+        vscode.postMessage({ type: 'show-deployment-details', deploymentId });
+      }
+
+      function showDeploymentLogs(deploymentId) {
+        vscode.postMessage({ type: 'show-deployment-logs', deploymentId });
+      }
+
+      function cancelDeployment(deploymentId) {
+        vscode.postMessage({ type: 'cancel-deployment', deploymentId });
+      }
+
+      function listApplicationEnvs(applicationId) {
+        vscode.postMessage({ type: 'list-app-envs', applicationId });
+      }
+
+      function createApplicationEnv(applicationId) {
+        vscode.postMessage({ type: 'create-app-env', applicationId });
+      }
+
       function formatDate(dateString) {
-        return new Date(dateString).toLocaleString();
+        const locale = uiLanguage === 'pt-BR' ? 'pt-BR' : 'en-US';
+        return new Date(dateString).toLocaleString(locale);
+      }
+
+      function parseStatus(status) {
+        const rawStatus = String(status || 'unknown').toLowerCase();
+        const [containerPart, healthPart] = rawStatus.split(':');
+        const containerStatus = containerPart || 'unknown';
+
+        let healthStatus = healthPart;
+        if (!healthStatus) {
+          if (rawStatus.includes('healthy')) {
+            healthStatus = 'healthy';
+          } else if (rawStatus.includes('unhealthy')) {
+            healthStatus = 'unhealthy';
+          }
+        }
+
+        return {
+          containerStatus,
+          healthStatus: healthStatus || 'unknown',
+        };
+      }
+
+      function getHealthClass(healthStatus) {
+        if (healthStatus === 'healthy') {
+          return 'status-health-healthy';
+        }
+        if (healthStatus === 'unhealthy' || healthStatus === 'failed') {
+          return 'status-health-unhealthy';
+        }
+        if (healthStatus === 'starting' || healthStatus === 'initializing') {
+          return 'status-health-starting';
+        }
+        return 'status-health-unknown';
+      }
+
+      function normalizeFilterLabel(status) {
+        return status.charAt(0).toUpperCase() + status.slice(1);
+      }
+
+      function getDeploymentStatusClass(status) {
+        const normalized = String(status || 'queued').toLowerCase();
+
+        if (
+          normalized.includes('success') ||
+          normalized.includes('completed') ||
+          normalized.includes('finished')
+        ) {
+          return 'deployment-status-success';
+        }
+
+        if (
+          normalized.includes('fail') ||
+          normalized.includes('error') ||
+          normalized.includes('crash')
+        ) {
+          return 'deployment-status-failed';
+        }
+
+        if (normalized.includes('cancel')) {
+          return 'deployment-status-canceled';
+        }
+
+        if (normalized.includes('queue') || normalized.includes('pending')) {
+          return 'deployment-status-queued';
+        }
+
+        return 'deployment-status-running';
+      }
+
+      function updateStatusFilterOptions(applications) {
+        if (!statusFilter) {
+          return;
+        }
+
+        const previousSelection = selectedContainerStatus;
+        const statuses = Array.from(
+          new Set(applications.map((app) => parseStatus(app.status).containerStatus))
+        ).sort();
+
+        const options = [
+          { value: 'all', label: t('filterAll') },
+          ...statuses.map((status) => ({
+            value: status,
+            label: normalizeFilterLabel(status),
+          })),
+        ];
+
+        const optionNodes = options.map((optionData) => {
+          const option = document.createElement('option');
+          option.value = optionData.value;
+          option.textContent = optionData.label;
+          return option;
+        });
+
+        statusFilter.replaceChildren(...optionNodes);
+
+        const hasPrevious = options.some(
+          (option) => option.value === previousSelection
+        );
+        selectedContainerStatus = hasPrevious ? previousSelection : 'all';
+        statusFilter.value = selectedContainerStatus;
       }
 
       window.addEventListener('message', (event) => {
         const message = event.data;
         switch (message.type) {
           case 'refresh-data':
-            vscode.setState({
-              applications: message.applications,
-              deployments: message.deployments,
-            });
-            updateUI(message.applications, message.deployments);
+            updateUI(
+              message.applications,
+              message.deployments,
+              message.contextNames,
+              message.activeContextName
+            );
             setRefreshing(false);
             break;
           case 'deployment-status':
@@ -341,19 +881,34 @@
       }
 
       function createApplicationCard(app) {
-        const card = createElement('div', 'card');
+        const parsedStatus = parseStatus(app.status);
+        const card = createElement('div', 'card application-card');
         const cardMain = createElement('div', 'card-main');
 
-        cardMain.appendChild(createElement('div', 'card-title', app.name || 'Unknown'));
+        const isFavorite = favoriteApplicationIds.has(app.id);
+        const favoriteButton = createElement(
+          'button',
+          'favorite-button' + (isFavorite ? ' favorite-active' : ''),
+          isFavorite ? '★' : '☆'
+        );
+        favoriteButton.type = 'button';
+        favoriteButton.title = isFavorite ? t('favoriteRemove') : t('favoriteAdd');
+        favoriteButton.setAttribute('aria-label', favoriteButton.title);
+        favoriteButton.addEventListener('click', () => toggleFavorite(app.id));
+        card.appendChild(favoriteButton);
+
         cardMain.appendChild(
-          createElement('div', 'card-subtitle', app.fqdn || 'No URL configured')
+          createElement('div', 'card-title', app.name || t('unknown'))
+        );
+        cardMain.appendChild(
+          createElement('div', 'card-subtitle', app.fqdn || t('noUrlConfigured'))
         );
 
         const cardContent = createElement('div', 'card-content');
         const fields = [
-          ['Repository:', app.git_repository || 'N/A'],
-          ['Branch:', app.git_branch || 'N/A'],
-          ['Last Updated:', formatDate(app.updated_at)],
+          [t('repository'), app.git_repository || t('notAvailable')],
+          [t('branch'), app.git_branch || t('notAvailable')],
+          [t('lastUpdated'), formatDate(app.updated_at)],
         ];
 
         fields.forEach(([label, value]) => {
@@ -364,12 +919,57 @@
         cardMain.appendChild(cardContent);
 
         const cardFooter = createElement('div', 'card-footer');
-        cardFooter.appendChild(createElement('span', 'status', app.status || 'unknown'));
+        const statusGroup = createElement('div', 'status-group');
+        statusGroup.appendChild(
+          createElement('span', 'status', parsedStatus.containerStatus)
+        );
 
-        const deployButton = createElement('button', 'deploy-button', 'Deploy');
+        const healthBadge = createElement(
+          'span',
+          'status health-status ' + getHealthClass(parsedStatus.healthStatus),
+          t('healthPrefix') + parsedStatus.healthStatus
+        );
+        statusGroup.appendChild(healthBadge);
+
+        cardFooter.appendChild(statusGroup);
+
+        const buttonGroup = createElement('div', 'button-group');
+
+        const startButton = createElement('button', 'secondary-button', t('start'));
+        startButton.type = 'button';
+        startButton.addEventListener('click', () => startApplication(app.id));
+        buttonGroup.appendChild(startButton);
+
+        const stopButton = createElement('button', 'secondary-button', t('stop'));
+        stopButton.type = 'button';
+        stopButton.addEventListener('click', () => stopApplication(app.id));
+        buttonGroup.appendChild(stopButton);
+
+        const restartButton = createElement(
+          'button',
+          'secondary-button',
+          t('restart')
+        );
+        restartButton.type = 'button';
+        restartButton.addEventListener('click', () => restartApplication(app.id));
+        buttonGroup.appendChild(restartButton);
+
+        const deployButton = createElement('button', 'deploy-button', t('deploy'));
         deployButton.type = 'button';
         deployButton.addEventListener('click', () => deployApplication(app.id));
-        cardFooter.appendChild(deployButton);
+        buttonGroup.appendChild(deployButton);
+
+        const envsButton = createElement('button', 'secondary-button', t('envs'));
+        envsButton.type = 'button';
+        envsButton.addEventListener('click', () => listApplicationEnvs(app.id));
+        buttonGroup.appendChild(envsButton);
+
+        const addEnvButton = createElement('button', 'secondary-button', t('addEnv'));
+        addEnvButton.type = 'button';
+        addEnvButton.addEventListener('click', () => createApplicationEnv(app.id));
+        buttonGroup.appendChild(addEnvButton);
+
+        cardFooter.appendChild(buttonGroup);
 
         card.appendChild(cardMain);
         card.appendChild(cardFooter);
@@ -381,41 +981,113 @@
         const cardMain = createElement('div', 'card-main');
 
         cardMain.appendChild(
-          createElement('div', 'card-title', deployment.applicationName || 'Unknown')
+          createElement('div', 'card-title', deployment.applicationName || t('unknown'))
         );
         cardMain.appendChild(
-          createElement('div', 'deployment-time', 'Started ' + (deployment.startedAt || ''))
+          createElement(
+            'div',
+            'deployment-time',
+            t('started') + ' ' + (deployment.startedAt || '')
+          )
         );
         cardMain.appendChild(
-          createElement('div', 'commit-message', deployment.commit || 'No commit details')
+          createElement('div', 'commit-message', deployment.commit || t('noCommitDetails'))
         );
 
         const cardFooter = createElement('div', 'card-footer');
+        const deploymentStatusClass = getDeploymentStatusClass(deployment.status);
         cardFooter.appendChild(
-          createElement('span', 'status deployment-status', deployment.status || 'running')
+          createElement(
+            'span',
+            'status deployment-status ' + deploymentStatusClass,
+            deployment.status || 'running'
+          )
         );
+
+        const buttonGroup = createElement('div', 'button-group');
+
+        const detailsButton = createElement(
+          'button',
+          'secondary-button',
+          t('details')
+        );
+        detailsButton.type = 'button';
+        detailsButton.addEventListener('click', () =>
+          showDeploymentDetails(deployment.id)
+        );
+        buttonGroup.appendChild(detailsButton);
+
+        const logsButton = createElement('button', 'secondary-button', t('logs'));
+        logsButton.type = 'button';
+        logsButton.addEventListener('click', () => showDeploymentLogs(deployment.id));
+        buttonGroup.appendChild(logsButton);
+
+        const cancelButton = createElement(
+          'button',
+          'secondary-button',
+          t('cancel')
+        );
+        cancelButton.type = 'button';
+        cancelButton.addEventListener('click', () =>
+          cancelDeployment(deployment.id)
+        );
+        buttonGroup.appendChild(cancelButton);
+
+        cardFooter.appendChild(buttonGroup);
 
         card.appendChild(cardMain);
         card.appendChild(cardFooter);
         return card;
       }
 
-      function updateUI(applications, deployments) {
+      function updateUI(applications, deployments, contextNames, activeContext) {
         if (!applications || !deployments) return;
 
+        lastApplications = applications;
+        lastDeployments = deployments;
+        availableContexts = Array.isArray(contextNames) ? contextNames : availableContexts;
+        activeContextName = activeContext || activeContextName;
+
+        updateContextSelector(availableContexts, activeContextName);
+
+        updateStatusFilterOptions(lastApplications);
+        renderApplications(lastApplications);
+        renderDeployments(lastDeployments);
+        persistState();
+      }
+
+      function renderApplications(applications) {
         const appsContainer = document.getElementById('applications');
+        const filteredApplications =
+          selectedContainerStatus === 'all'
+            ? applications
+            : applications.filter(
+                (app) =>
+                  parseStatus(app.status).containerStatus === selectedContainerStatus
+              );
+        const favoriteFilteredApplications = showFavoritesOnly
+          ? filteredApplications.filter((app) => favoriteApplicationIds.has(app.id))
+          : filteredApplications;
+        const sortedApplications = sortApplicationsWithFavorites(
+          favoriteFilteredApplications
+        );
+
         const appNodes = [];
-        if (applications.length === 0) {
-          appNodes.push(createEmptyElement('No applications found'));
+        if (sortedApplications.length === 0) {
+          appNodes.push(createEmptyElement(t('noApplications')));
         } else {
-          applications.forEach((app) => appNodes.push(createApplicationCard(app)));
+          sortedApplications.forEach((app) =>
+            appNodes.push(createApplicationCard(app))
+          );
         }
         appsContainer.replaceChildren(...appNodes);
+      }
 
+      function renderDeployments(deployments) {
         const deploymentsContainer = document.getElementById('deployments');
         const deploymentNodes = [];
         if (deployments.length === 0) {
-          deploymentNodes.push(createEmptyElement('No active deployments'));
+          deploymentNodes.push(createEmptyElement(t('noDeployments')));
         } else {
           deployments.forEach((deployment) =>
             deploymentNodes.push(createDeploymentCard(deployment))

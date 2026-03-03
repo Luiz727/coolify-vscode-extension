@@ -2,17 +2,15 @@
   "name": "vscode-coolify",
   "displayName": "Coolify Deployments",
   "description": "Track and deploy your Coolify applications right from Visual Studio Code",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "author": {
-    "name": "Nitin Ranganath",
-    "email": "nitinranganath@gmail.com",
-    "url": "https://nitinranganath.com"
+    "name": "Nixcon Sistemas"
   },
-  "publisher": "NitinRanganath",
+  "publisher": "NixconSistemas",
   "icon": "public/logo.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/itsnitinr/coolify-vscode-extension"
+    "url": "https://github.com/Luiz727/coolify-vscode-extension"
   },
   "engines": {
     "vscode": "^1.74.0"
@@ -21,7 +19,27 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:coolify-deployments"
+    "onView:coolify-deployments",
+    "onCommand:coolify.configure",
+    "onCommand:coolify.reconfigure",
+    "onCommand:coolify.createContext",
+    "onCommand:coolify.switchContext",
+    "onCommand:coolify.deleteContext",
+    "onCommand:coolify.refreshApplications",
+    "onCommand:coolify.startDeployment",
+    "onCommand:coolify.startApplication",
+    "onCommand:coolify.stopApplication",
+    "onCommand:coolify.restartApplication",
+    "onCommand:coolify.selectLanguage",
+    "onCommand:coolify.showLogs",
+    "onCommand:coolify.listEnvironmentVariables",
+    "onCommand:coolify.createEnvironmentVariable",
+    "onCommand:coolify.updateEnvironmentVariable",
+    "onCommand:coolify.deleteEnvironmentVariable",
+    "onCommand:coolify.listDeployments",
+    "onCommand:coolify.showDeploymentDetails",
+    "onCommand:coolify.cancelDeployment",
+    "onCommand:coolify.showDeploymentLogs"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -32,6 +50,36 @@
           "type": "boolean",
           "default": false,
           "description": "Allow HTTP (insecure) connections to Coolify server. HTTPS is strongly recommended."
+        },
+        "coolify.language": {
+          "type": "string",
+          "default": "en",
+          "enum": [
+            "en",
+            "pt-BR"
+          ],
+          "enumDescriptions": [
+            "English",
+            "Português (Brasil)"
+          ],
+          "description": "UI language for Coolify extension views."
+        },
+        "coolify.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "enumDescriptions": [
+            "Verbose logs for troubleshooting.",
+            "General operational logs.",
+            "Warnings and errors only.",
+            "Errors only."
+          ],
+          "description": "Controls how much the Coolify output channel logs."
         }
       }
     },
@@ -76,15 +124,77 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "coolify.createContext",
+        "title": "Coolify: Create Context"
+      },
+      {
+        "command": "coolify.switchContext",
+        "title": "Coolify: Switch Context"
+      },
+      {
+        "command": "coolify.deleteContext",
+        "title": "Coolify: Delete Context"
+      },
+      {
         "command": "coolify.refreshApplications",
         "title": "Coolify: Refresh Applications",
-        "icon": "$(refresh)",
-        "enablement": "coolify.isConfigured"
+        "icon": "$(refresh)"
       },
       {
         "command": "coolify.startDeployment",
-        "title": "Coolify: Start Deployment",
-        "enablement": "coolify.isConfigured"
+        "title": "Coolify: Start Deployment"
+      },
+      {
+        "command": "coolify.startApplication",
+        "title": "Coolify: Start Application"
+      },
+      {
+        "command": "coolify.stopApplication",
+        "title": "Coolify: Stop Application"
+      },
+      {
+        "command": "coolify.restartApplication",
+        "title": "Coolify: Restart Application"
+      },
+      {
+        "command": "coolify.selectLanguage",
+        "title": "Coolify: Select Language"
+      },
+      {
+        "command": "coolify.showLogs",
+        "title": "Coolify: Show Logs"
+      },
+      {
+        "command": "coolify.listEnvironmentVariables",
+        "title": "Coolify: List Environment Variables"
+      },
+      {
+        "command": "coolify.createEnvironmentVariable",
+        "title": "Coolify: Create Environment Variable"
+      },
+      {
+        "command": "coolify.updateEnvironmentVariable",
+        "title": "Coolify: Update Environment Variable"
+      },
+      {
+        "command": "coolify.deleteEnvironmentVariable",
+        "title": "Coolify: Delete Environment Variable"
+      },
+      {
+        "command": "coolify.listDeployments",
+        "title": "Coolify: List Deployments"
+      },
+      {
+        "command": "coolify.showDeploymentDetails",
+        "title": "Coolify: Show Deployment Details"
+      },
+      {
+        "command": "coolify.cancelDeployment",
+        "title": "Coolify: Cancel Deployment"
+      },
+      {
+        "command": "coolify.showDeploymentLogs",
+        "title": "Coolify: Show Deployment Logs"
       }
     ]
   },

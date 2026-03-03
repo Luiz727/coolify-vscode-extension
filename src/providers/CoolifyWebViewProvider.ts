@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { CoolifyApiError, CoolifyService } from '../services/CoolifyService';
+import type {
+  EnvironmentVariable,
+  EnvironmentVariableCreateRequest,
+  EnvironmentVariableUpdateRequest,
+} from '../services/CoolifyService';
+import { logger } from '../services/LoggerService';
 
 // Types and Interfaces
 interface RetryConfig {
@@ -12,6 +18,8 @@ interface RetryConfig {
 interface WebViewState {
   applications: Application[];
   deployments: Deployment[];
+  contextNames: string[];
+  activeContextName: string;
 }
 
 interface Application {
@@ -33,15 +41,45 @@ interface Deployment {
   startedAt: string;
 }
 
+interface DeploymentListItem {
+  id: string;
+  deploymentUuid?: string;
+  applicationId: string;
+  applicationName: string;
+  status: string;
+  commit: string;
+  createdAt: string;
+  deploymentUrl?: string;
+  commitMessage?: string;
+  logs?: string;
+}
+
 interface WebViewMessage {
-  type: 'refresh' | 'deploy' | 'configure' | 'reconfigure';
+  type:
+    | 'refresh'
+    | 'deploy'
+    | 'start-app'
+    | 'stop-app'
+    | 'restart-app'
+    | 'show-deployment-details'
+    | 'show-deployment-logs'
+    | 'cancel-deployment'
+    | 'list-app-envs'
+    | 'create-app-env'
+    | 'switch-context'
+    | 'configure'
+    | 'reconfigure';
   applicationId?: string;
+  deploymentId?: string;
+  contextName?: string;
 }
 
 interface RefreshDataMessage {
   type: 'refresh-data';
   applications: Application[];
   deployments: Deployment[];
+  contextNames: string[];
+  activeContextName: string;
 }
 
 interface DeploymentStatusMessage {
@@ -51,6 +89,7 @@ interface DeploymentStatusMessage {
 }
 
 type WebViewOutgoingMessage = RefreshDataMessage | DeploymentStatusMessage;
+type CoolifyLanguage = 'en' | 'pt-BR';
 
 // Constants
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
@@ -186,7 +225,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         this.retryCount = 0;
       } catch (error) {
         this.retryCount++;
-        console.error('Refresh failed:', error);
+        logger.warn('Auto-refresh failed', error);
 
         if (this.retryCount >= DEFAULT_RETRY_CONFIG.maxAttempts) {
           this.stopRefreshInterval();
@@ -210,6 +249,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       await this.withRetry(async () => {
         const serverUrl = await this.configManager.getServerUrl();
         const token = await this.configManager.getToken();
+        const contextNames = await this.configManager.getContextNames();
+        const activeContextName = await this.configManager.getActiveContextName();
 
         if (!serverUrl || !token) {
           await this.handleUnconfiguredState();
@@ -222,7 +263,12 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           service.getDeployments(),
         ]);
 
-        await this.updateWebViewState(applications, deployments);
+        await this.updateWebViewState(
+          applications,
+          deployments,
+          contextNames,
+          activeContextName
+        );
       });
     } catch (error) {
       await this.handleRefreshError(error);
@@ -239,7 +285,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
   private async updateWebViewState(
     applications: any[],
-    deployments: any[]
+    deployments: any[],
+    contextNames: string[],
+    activeContextName: string
   ): Promise<void> {
     if (!this.isViewValid()) {
       return;
@@ -252,6 +300,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       type: 'refresh-data',
       applications: uiApplications,
       deployments: uiDeployments,
+      contextNames,
+      activeContextName,
     } as WebViewOutgoingMessage);
   }
 
@@ -314,6 +364,48 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  public async startApplication(applicationId: string): Promise<string> {
+    return this.executeApplicationAction(applicationId, 'start');
+  }
+
+  public async stopApplication(applicationId: string): Promise<string> {
+    return this.executeApplicationAction(applicationId, 'stop');
+  }
+
+  public async restartApplication(applicationId: string): Promise<string> {
+    return this.executeApplicationAction(applicationId, 'restart');
+  }
+
+  private async executeApplicationAction(
+    applicationId: string,
+    action: 'start' | 'stop' | 'restart'
+  ): Promise<string> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    const service = new CoolifyService(serverUrl, token);
+
+    let message = '';
+    switch (action) {
+      case 'start':
+        message = await service.startApplication(applicationId);
+        break;
+      case 'stop':
+        message = await service.stopApplication(applicationId);
+        break;
+      case 'restart':
+        message = await service.restartApplication(applicationId);
+        break;
+    }
+
+    await this.refreshData();
+    return message;
+  }
+
   // WebView Resolution
   public async resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -372,7 +464,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         try {
           await this.handleWebViewMessage(data);
         } catch (error) {
-          console.error('Error handling webview message:', error);
+          logger.error('Error handling webview message', error);
         }
       }
     );
@@ -388,6 +480,90 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           await this.deployApplication(message.applicationId);
         }
         break;
+      case 'start-app':
+        if (message.applicationId) {
+          const result = await this.startApplication(message.applicationId);
+          if (this.isViewValid()) {
+            vscode.window.showInformationMessage(result);
+          }
+        }
+        break;
+      case 'stop-app':
+        if (message.applicationId) {
+          const result = await this.stopApplication(message.applicationId);
+          if (this.isViewValid()) {
+            vscode.window.showInformationMessage(result);
+          }
+        }
+        break;
+      case 'restart-app':
+        if (message.applicationId) {
+          const result = await this.restartApplication(message.applicationId);
+          if (this.isViewValid()) {
+            vscode.window.showInformationMessage(result);
+          }
+        }
+        break;
+      case 'show-deployment-details':
+        if (message.deploymentId) {
+          await vscode.commands.executeCommand(
+            'coolify.showDeploymentDetails',
+            message.deploymentId
+          );
+        }
+        break;
+      case 'show-deployment-logs':
+        if (message.deploymentId) {
+          const logs = await this.getDeploymentLogs(message.deploymentId);
+          const document = await vscode.workspace.openTextDocument({
+            language: 'log',
+            content: logs || 'No logs available for this deployment.',
+          });
+          await vscode.window.showTextDocument(document, {
+            preview: true,
+          });
+        }
+        break;
+      case 'cancel-deployment':
+        if (message.deploymentId) {
+          const confirmation = await vscode.window.showWarningMessage(
+            `Are you sure you want to cancel deployment ${message.deploymentId}?`,
+            { modal: true },
+            'Cancel Deployment'
+          );
+
+          if (confirmation === 'Cancel Deployment') {
+            await this.cancelDeployment(message.deploymentId);
+            if (this.isViewValid()) {
+              vscode.window.showInformationMessage(
+                `Deployment ${message.deploymentId} cancellation requested.`
+              );
+            }
+          }
+        }
+        break;
+      case 'list-app-envs':
+        if (message.applicationId) {
+          await vscode.commands.executeCommand(
+            'coolify.listEnvironmentVariables',
+            message.applicationId
+          );
+        }
+        break;
+      case 'create-app-env':
+        if (message.applicationId) {
+          await vscode.commands.executeCommand(
+            'coolify.createEnvironmentVariable',
+            message.applicationId
+          );
+        }
+        break;
+      case 'switch-context':
+        if (message.contextName) {
+          await this.configManager.setActiveContext(message.contextName);
+          await this.updateView();
+        }
+        break;
       case 'configure':
         await vscode.commands.executeCommand('coolify.configure');
         break;
@@ -400,7 +576,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     this.disposables.push(
       webviewView.onDidChangeVisibility(() => {
         if (webviewView.visible) {
-          this.refreshData().catch(console.error);
+          this.refreshData().catch((error) => {
+            logger.error('Failed to refresh on visibility change', error);
+          });
           this.startRefreshInterval();
         } else {
           this.stopRefreshInterval();
@@ -439,9 +617,18 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   // HTML Generation
+  private getConfiguredLanguage(): CoolifyLanguage {
+    const configured = vscode.workspace
+      .getConfiguration('coolify')
+      .get<string>('language', 'en');
+
+    return configured === 'pt-BR' ? 'pt-BR' : 'en';
+  }
+
   private async getWebViewHtml(): Promise<string> {
     const nonce = this.generateNonce();
     const cspSource = this._view?.webview.cspSource || '';
+    const language = this.getConfiguredLanguage();
     const htmlPath = vscode.Uri.joinPath(
       this._extensionUri,
       'dist',
@@ -452,12 +639,14 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     let html = Buffer.from(fileData).toString('utf-8');
     html = html.replace(/\$\{nonce\}/g, nonce);
     html = html.replace(/\$\{cspSource\}/g, cspSource);
+    html = html.replace(/\$\{uiLanguage\}/g, language);
     return html;
   }
 
   private async getWelcomeHtml(): Promise<string> {
     const nonce = this.generateNonce();
     const cspSource = this._view?.webview.cspSource || '';
+    const language = this.getConfiguredLanguage();
     const logoUri = this._view?.webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'public', 'logo.svg')
     );
@@ -474,6 +663,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     html = html.replace('${logoUri}', logoUri?.toString() || '');
     html = html.replace(/\$\{nonce\}/g, nonce);
     html = html.replace(/\$\{cspSource\}/g, cspSource);
+    html = html.replace(/\$\{uiLanguage\}/g, language);
 
     return html;
   }
@@ -489,7 +679,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
   // Error Handling
   private handleError(message: string, error: unknown): void {
-    console.error(`${message}:`, error);
+    logger.error(message, error);
     if (this.isViewValid()) {
       if (this.isAuthenticationError(error)) {
         this.handleAuthenticationError();
@@ -555,9 +745,168 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         label: `${app.name} (${app.git_repository}:${app.git_branch})`,
       }));
     } catch (error) {
-      console.error('Failed to get applications:', error);
+      logger.error('Failed to get applications', error);
       throw error;
     }
+  }
+
+  public async getDeployments(): Promise<DeploymentListItem[]> {
+    try {
+      const serverUrl = await this.configManager.getServerUrl();
+      const token = await this.configManager.getToken();
+
+      if (!serverUrl || !token) {
+        throw new Error('Extension not configured properly');
+      }
+
+      const service = new CoolifyService(serverUrl, token);
+      const deployments = await service.getDeployments();
+
+      return deployments
+        .map((deployment) => ({
+          id: deployment.deployment_uuid || deployment.id,
+          deploymentUuid: deployment.deployment_uuid,
+          applicationId: deployment.application_id,
+          applicationName: deployment.application_name,
+          status: deployment.status,
+          commit: deployment.commit,
+          createdAt: deployment.created_at,
+          deploymentUrl: deployment.deployment_url,
+          commitMessage: deployment.commit_message,
+        }))
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+    } catch (error) {
+      logger.error('Failed to get deployments', error);
+      throw error;
+    }
+  }
+
+  public async getDeploymentDetails(
+    deploymentId: string
+  ): Promise<DeploymentListItem | undefined> {
+    try {
+      const serverUrl = await this.configManager.getServerUrl();
+      const token = await this.configManager.getToken();
+
+      if (!serverUrl || !token) {
+        throw new Error('Extension not configured properly');
+      }
+
+      const service = new CoolifyService(serverUrl, token);
+      const deployment = await service.getDeployment(deploymentId);
+
+      return {
+        id: deployment.deployment_uuid || deployment.id,
+        deploymentUuid: deployment.deployment_uuid,
+        applicationId: deployment.application_id,
+        applicationName: deployment.application_name,
+        status: deployment.status,
+        commit: deployment.commit,
+        createdAt: deployment.created_at,
+        deploymentUrl: deployment.deployment_url,
+        commitMessage: deployment.commit_message,
+        logs: deployment.logs,
+      };
+    } catch (error) {
+      logger.warn('Failed to get deployment details from details endpoint', {
+        deploymentId,
+        error,
+      });
+      const deployments = await this.getDeployments();
+      return deployments.find((deployment) => deployment.id === deploymentId);
+    }
+  }
+
+  public async getDeploymentLogs(deploymentId: string): Promise<string> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    const service = new CoolifyService(serverUrl, token);
+    return service.getDeploymentLogs(deploymentId);
+  }
+
+  public async cancelDeployment(deploymentId: string): Promise<void> {
+    try {
+      const serverUrl = await this.configManager.getServerUrl();
+      const token = await this.configManager.getToken();
+
+      if (!serverUrl || !token) {
+        throw new Error('Extension not configured properly');
+      }
+
+      const service = new CoolifyService(serverUrl, token);
+      await service.cancelDeployment(deploymentId);
+      await this.refreshData();
+    } catch (error) {
+      logger.error('Failed to cancel deployment', error);
+      throw error;
+    }
+  }
+
+  public async listEnvironmentVariables(
+    applicationId: string
+  ): Promise<EnvironmentVariable[]> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    const service = new CoolifyService(serverUrl, token);
+    return service.listEnvironmentVariables(applicationId);
+  }
+
+  public async createEnvironmentVariable(
+    applicationId: string,
+    request: EnvironmentVariableCreateRequest
+  ): Promise<EnvironmentVariable> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    const service = new CoolifyService(serverUrl, token);
+    return service.createEnvironmentVariable(applicationId, request);
+  }
+
+  public async updateEnvironmentVariable(
+    applicationId: string,
+    request: EnvironmentVariableUpdateRequest
+  ): Promise<EnvironmentVariable> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    const service = new CoolifyService(serverUrl, token);
+    return service.updateEnvironmentVariable(applicationId, request);
+  }
+
+  public async deleteEnvironmentVariable(
+    applicationId: string,
+    environmentVariableUuid: string
+  ): Promise<void> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    const service = new CoolifyService(serverUrl, token);
+    await service.deleteEnvironmentVariable(applicationId, environmentVariableUuid);
   }
 
   // Cleanup

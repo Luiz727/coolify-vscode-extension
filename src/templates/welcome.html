@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${uiLanguage}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -67,22 +67,58 @@
   <body>
     <div class="content">
       <img src="${logoUri}" alt="Coolify Logo" class="logo" />
-      <h2>Coolify Deployments</h2>
-      <p class="subtitle">Configure your Coolify server to get started</p>
+      <h2 id="welcome-title">Coolify Deployments</h2>
+      <p class="subtitle" id="welcome-subtitle">Configure your Coolify server to get started</p>
       <button class="configure-button" id="configure-button" type="button">
-        Configure
+        <span id="configure-label">Configure</span>
       </button>
       <br />
       <a
         href="https://coolify.io/docs/api-reference/authorization#generate"
         class="docs-link"
         target="_blank"
+        id="docs-link"
       >
         Learn how to generate API token →
       </a>
     </div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const uiLanguage = '${uiLanguage}' === 'pt-BR' ? 'pt-BR' : 'en';
+      const i18n = {
+        en: {
+          title: 'Coolify Deployments',
+          subtitle: 'Configure your Coolify server to get started',
+          configure: 'Configure',
+          docs: 'Learn how to generate API token →',
+        },
+        'pt-BR': {
+          title: 'Deployments do Coolify',
+          subtitle: 'Configure seu servidor Coolify para começar',
+          configure: 'Configurar',
+          docs: 'Saiba como gerar o token de API →',
+        },
+      };
+
+      const text = i18n[uiLanguage] || i18n.en;
+
+      const title = document.getElementById('welcome-title');
+      const subtitle = document.getElementById('welcome-subtitle');
+      const configureLabel = document.getElementById('configure-label');
+      const docsLink = document.getElementById('docs-link');
+
+      if (title) {
+        title.textContent = text.title;
+      }
+      if (subtitle) {
+        subtitle.textContent = text.subtitle;
+      }
+      if (configureLabel) {
+        configureLabel.textContent = text.configure;
+      }
+      if (docsLink) {
+        docsLink.textContent = text.docs;
+      }
 
       function configure() {
         vscode.postMessage({ type: 'configure' });
