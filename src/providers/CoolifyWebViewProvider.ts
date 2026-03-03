@@ -13,6 +13,10 @@ import {
   isValidCoolifyApplication,
   isValidCoolifyDeployment,
 } from '../utils/payloadGuards';
+import {
+  sanitizeDisplayText,
+  sanitizeDisplayTextOrFallback,
+} from '../utils/displaySanitizer';
 
 // Types and Interfaces
 interface RetryConfig {
@@ -377,15 +381,15 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   ): Application[] {
     return applications.map((app) => ({
       id: app.uuid,
-      name: app.name,
-      status: app.status,
-      fqdn: app.fqdn,
+      name: sanitizeDisplayTextOrFallback(app.name, app.uuid),
+      status: sanitizeDisplayTextOrFallback(app.status, 'unknown'),
+      fqdn: sanitizeDisplayText(app.fqdn),
       externalUrl:
-        this.normalizeExternalUrl(app.fqdn) ||
+        this.normalizeExternalUrl(sanitizeDisplayText(app.fqdn)) ||
         this.normalizeExternalUrl(`${serverUrl}/resources/${app.uuid}`),
-      git_repository: app.git_repository,
-      git_branch: app.git_branch,
-      updated_at: app.updated_at,
+      git_repository: sanitizeDisplayText(app.git_repository),
+      git_branch: sanitizeDisplayText(app.git_branch),
+      updated_at: sanitizeDisplayText(app.updated_at),
     }));
   }
 
@@ -393,11 +397,14 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     return deployments.map((d) => ({
       id: d.id,
       applicationId: d.application_id,
-      applicationName: d.application_name,
-      status: d.status,
+      applicationName: sanitizeDisplayTextOrFallback(
+        d.application_name,
+        d.application_id
+      ),
+      status: sanitizeDisplayTextOrFallback(d.status, 'unknown'),
       commit:
-        d.commit_message ||
-        `Deploying ${d.commit?.slice(0, 7) || 'latest'} commit`,
+        sanitizeDisplayText(d.commit_message) ||
+        `Deploying ${sanitizeDisplayText(d.commit).slice(0, 7) || 'latest'} commit`,
       startedAt: new Date(d.created_at).toLocaleString(),
       externalUrl: this.normalizeExternalUrl(d.deployment_url),
     }));
@@ -408,12 +415,15 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       id: deployment.deployment_uuid || deployment.id,
       deploymentUuid: deployment.deployment_uuid,
       applicationId: deployment.application_id,
-      applicationName: deployment.application_name,
-      status: deployment.status,
-      commit: deployment.commit,
-      createdAt: deployment.created_at,
+      applicationName: sanitizeDisplayTextOrFallback(
+        deployment.application_name,
+        deployment.application_id
+      ),
+      status: sanitizeDisplayTextOrFallback(deployment.status, 'unknown'),
+      commit: sanitizeDisplayText(deployment.commit),
+      createdAt: sanitizeDisplayText(deployment.created_at),
       deploymentUrl: deployment.deployment_url,
-      commitMessage: deployment.commit_message,
+      commitMessage: sanitizeDisplayText(deployment.commit_message),
       logs: deployment.logs,
     };
   }
@@ -981,9 +991,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
       return applications.map((app) => ({
         id: app.uuid,
-        name: app.name,
-        status: app.status,
-        label: `${app.name} (${app.git_repository}:${app.git_branch})`,
+        name: sanitizeDisplayTextOrFallback(app.name, app.uuid),
+        status: sanitizeDisplayTextOrFallback(app.status, 'unknown'),
+        label: `${sanitizeDisplayTextOrFallback(app.name, app.uuid)} (${sanitizeDisplayText(app.git_repository)}:${sanitizeDisplayText(app.git_branch)})`,
       }));
     } catch (error) {
       logger.error('Failed to get applications', error);

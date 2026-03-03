@@ -42,4 +42,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Architecture: add typed list-item mappers and safer deployment date sorting to reduce shape/date assumptions in provider reads.
 - Reliability: add runtime guards for applications/deployments payload items and ignore invalid entries with warning logs.
 - Reliability: align `languageModelTools` IDs to VS Code naming rules (`[\w-]+`) to avoid runtime registration warnings.
+- Security: centralize display-text sanitization in provider mappings before sending data to webview.
 - Docs: add security notes for transport configuration.

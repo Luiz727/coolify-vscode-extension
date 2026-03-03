@@ -20,14 +20,16 @@ Entregas implementadas recentemente e já disponíveis na extensão:
 - Integração com chat por participante `@coolify` (ações MVP).
 - Migração para **Chat Tools** (Language Model Tools) visíveis em **Configurar Ferramentas** do Copilot Chat.
 - Tools adicionadas:
-  - `coolify.configure`
-  - `coolify.healthCheck`
-  - `coolify.listApplications`
-  - `coolify.getApplicationStatus`
-  - `coolify.startDeployment`
-  - `coolify.applicationLifecycle`
-  - `coolify.getDeploymentLogs`
+  - `coolify-configure`
+  - `coolify-healthCheck`
+  - `coolify-listApplications`
+  - `coolify-getApplicationStatus`
+  - `coolify-startDeployment`
+  - `coolify-applicationLifecycle`
+  - `coolify-getDeploymentLogs`
 - Fluxo de packaging/reinstalação local validado com sucesso (`pnpm run package`, `vsce package`, instalação do `.vsix`).
+- CI com gates ativos (`check-types`, `lint`, `test`, `test:coverage`) e cobertura mínima configurada.
+- Testes reais (unitários + integração mock + extensão) ativos no pipeline.
 
 Status prático: a extensão já cobre um MVP operacional por chat + sidebar/commands para configuração, status, deploy, logs e ciclo de vida.
 
@@ -46,7 +48,7 @@ Status prático: a extensão já cobre um MVP operacional por chat + sidebar/com
 - Token salvo em `SecretStorage` do VS Code.
 - UI em Webview com templates HTML locais.
 - Sem telemetria explícita.
-- Sem testes funcionais reais (apenas teste de exemplo).
+- Testes funcionais reais disponíveis (suite de extensão + unit/integration).
 
 ### Gap geral vs `coolify-cli`
 
@@ -317,11 +319,11 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 ## Segurança (alta prioridade)
 - [x] Forçar HTTPS por padrão (com opt-in explícito para HTTP inseguro).
 - [x] CSP + remoção de `innerHTML` inseguro.
-- [ ] Sanitização centralizada.
+- [x] Sanitização centralizada.
 
 ## Core técnico
 - [x] Cliente API com timeout/retry/classificação de erro.
-- [ ] Tipagem estrita de respostas.
+- [ ] Tipagem estrita de respostas (parcialmente avançada com interfaces e guards de runtime).
 - [ ] Estado da UI explícito.
 
 ## Produto
@@ -334,9 +336,20 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 - [x] Language Model Tools no Copilot Chat (Configurar Ferramentas).
 
 ## Engenharia
-- [ ] Testes unitários e integração reais.
-- [ ] CI com gates de qualidade.
-- [ ] Changelog e documentação atualizados.
+- [x] Testes unitários e integração reais.
+- [x] CI com gates de qualidade.
+- [ ] Changelog e documentação atualizados (changelog em dia; documentação funcional ainda parcial).
+
+---
+
+## 11.1) Pendências prioritárias (estado atual)
+
+Itens ainda faltantes para fechar o plano com qualidade de produção:
+
+1. **Tipagem estrita ponta a ponta** de todos os payloads da API (sem zonas implícitas).
+2. **Máquina de estado explícita da UI** (`unconfigured/loading/ready/error`) para reduzir lógica ad-hoc.
+3. **Paridade total Palette ↔ Sidebar** (validar e cobrir qualquer operação ainda órfã).
+4. **Documentação final** (matriz suportado/não suportado, troubleshooting completo, guia de segurança ampliado).
 
 ---
 
