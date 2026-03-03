@@ -43,4 +43,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Reliability: add runtime guards for applications/deployments payload items and ignore invalid entries with warning logs.
 - Reliability: align `languageModelTools` IDs to VS Code naming rules (`[\w-]+`) to avoid runtime registration warnings.
 - Security: centralize display-text sanitization in provider mappings before sending data to webview.
+- Architecture: validate API payload shapes in `CoolifyService` (arrays/objects) with typed guards before exposing data to provider/tools.
 - Docs: add security notes for transport configuration.

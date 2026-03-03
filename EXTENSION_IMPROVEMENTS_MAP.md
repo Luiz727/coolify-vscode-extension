@@ -323,7 +323,7 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 
 ## Core técnico
 - [x] Cliente API com timeout/retry/classificação de erro.
-- [ ] Tipagem estrita de respostas (parcialmente avançada com interfaces e guards de runtime).
+- [x] Tipagem estrita de respostas (com interfaces + validação de shape em runtime no service).
 - [ ] Estado da UI explícito.
 
 ## Produto
@@ -346,10 +346,9 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 
 Itens ainda faltantes para fechar o plano com qualidade de produção:
 
-1. **Tipagem estrita ponta a ponta** de todos os payloads da API (sem zonas implícitas).
-2. **Máquina de estado explícita da UI** (`unconfigured/loading/ready/error`) para reduzir lógica ad-hoc.
-3. **Paridade total Palette ↔ Sidebar** (validar e cobrir qualquer operação ainda órfã).
-4. **Documentação final** (matriz suportado/não suportado, troubleshooting completo, guia de segurança ampliado).
+1. **Máquina de estado explícita da UI** (`unconfigured/loading/ready/error`) para reduzir lógica ad-hoc.
+2. **Paridade total Palette ↔ Sidebar** (validar e cobrir qualquer operação ainda órfã).
+3. **Documentação final** (matriz suportado/não suportado, troubleshooting completo, guia de segurança ampliado).
 
 ---
 

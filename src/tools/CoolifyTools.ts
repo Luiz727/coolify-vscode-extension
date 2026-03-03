@@ -1,26 +1,15 @@
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { CoolifyService } from '../services/CoolifyService';
+import type {
+  Application as CoolifyApplication,
+} from '../services/CoolifyService';
 import { logger } from '../services/LoggerService';
 
 type LmTool = {
   invoke: (options: { input?: unknown }, token: vscode.CancellationToken) => Promise<unknown>;
   prepareInvocation?: (options: { input?: unknown }, token: vscode.CancellationToken) => unknown;
 };
-
-interface ApplicationItem {
-  uuid: string;
-  name: string;
-  status: string;
-  git_branch: string;
-  fqdn: string;
-}
-
-interface DeploymentItem {
-  id: string;
-  application_name: string;
-  created_at: string;
-}
 
 function normalize(value: string): string {
   return value
@@ -69,8 +58,8 @@ async function findApplicationByInput(
   service: CoolifyService,
   appId?: string,
   appName?: string
-): Promise<ApplicationItem> {
-  const applications = (await service.getApplications()) as ApplicationItem[];
+): Promise<CoolifyApplication> {
+  const applications = await service.getApplications();
   if (!applications.length) {
     throw new Error('Nenhuma aplicação encontrada no Coolify.');
   }
@@ -294,7 +283,7 @@ export function registerCoolifyTools(
 
           let deploymentId = input.deploymentId;
           if (!deploymentId) {
-            const deployments = (await service.getDeployments()) as DeploymentItem[];
+            const deployments = await service.getDeployments();
 
             if (!deployments.length) {
               throw new Error('Nenhum deployment encontrado.');

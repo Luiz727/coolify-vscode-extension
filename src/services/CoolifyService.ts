@@ -1,5 +1,13 @@
 import { CoolifyApiError, HttpClient } from './HttpClient';
 import { logger } from './LoggerService';
+import {
+  isValidApplicationLifecycleResponse,
+  isValidCoolifyApplication,
+  isValidCoolifyDeployment,
+  isValidEnvironmentVariable,
+  parseArrayPayload,
+  parseObjectPayload,
+} from '../utils/payloadGuards';
 
 export interface Application {
   uuid: string;
@@ -79,16 +87,55 @@ export class CoolifyService {
     return this.client.get<T>(endpoint);
   }
 
+  private async fetchValidatedArray<T>(
+    endpoint: string,
+    guard: (value: unknown) => value is T,
+    entityName: string
+  ): Promise<T[]> {
+    const payload = await this.fetchWithAuth<unknown>(endpoint);
+    const { items, invalidCount } = parseArrayPayload(payload, guard, entityName);
+
+    if (invalidCount > 0) {
+      logger.warn(`Ignoring invalid ${entityName} items from API response`, {
+        entityName,
+        invalidCount,
+      });
+    }
+
+    return items;
+  }
+
+  private async fetchValidatedObject<T>(
+    endpoint: string,
+    guard: (value: unknown) => value is T,
+    entityName: string
+  ): Promise<T> {
+    const payload = await this.fetchWithAuth<unknown>(endpoint);
+    return parseObjectPayload(payload, guard, entityName);
+  }
+
   async getApplications(): Promise<Application[]> {
-    return this.fetchWithAuth<Application[]>('/api/v1/applications');
+    return this.fetchValidatedArray(
+      '/api/v1/applications',
+      isValidCoolifyApplication,
+      'applications'
+    );
   }
 
   async getDeployments(): Promise<Deployment[]> {
-    return this.fetchWithAuth<Deployment[]>('/api/v1/deployments');
+    return this.fetchValidatedArray(
+      '/api/v1/deployments',
+      isValidCoolifyDeployment,
+      'deployments'
+    );
   }
 
   async getDeployment(deploymentId: string): Promise<Deployment> {
-    return this.fetchWithAuth<Deployment>(`/api/v1/deployments/${deploymentId}`);
+    return this.fetchValidatedObject(
+      `/api/v1/deployments/${deploymentId}`,
+      isValidCoolifyDeployment,
+      'deployment'
+    );
   }
 
   async getDeploymentLogs(deploymentId: string): Promise<string> {
@@ -123,11 +170,20 @@ export class CoolifyService {
     applicationId: string,
     action: 'start' | 'stop' | 'restart'
   ): Promise<string> {
-    const response = await this.client.get<ApplicationLifecycleResponse>(
+    const fallbackMessage = `Application ${action} request queued.`;
+    const response = await this.client.get<unknown>(
       `/api/v1/applications/${applicationId}/${action}`
     );
 
-    return response?.message || `Application ${action} request queued.`;
+    if (!isValidApplicationLifecycleResponse(response)) {
+      logger.warn('Invalid application lifecycle payload received', {
+        applicationId,
+        action,
+      });
+      return fallbackMessage;
+    }
+
+    return response.message || fallbackMessage;
   }
 
   async startApplication(applicationId: string): Promise<string> {
@@ -145,8 +201,10 @@ export class CoolifyService {
   async listEnvironmentVariables(
     applicationId: string
   ): Promise<EnvironmentVariable[]> {
-    return this.fetchWithAuth<EnvironmentVariable[]>(
-      `/api/v1/applications/${applicationId}/envs`
+    return this.fetchValidatedArray(
+      `/api/v1/applications/${applicationId}/envs`,
+      isValidEnvironmentVariable,
+      'environment variables'
     );
   }
 
