@@ -16,6 +16,32 @@ An extension that allows you to manage and trigger your Coolify application depl
 - List deployments and inspect deployment details from Command Palette
 - Cancel in-progress deployments from Command Palette with confirmation
 - Open deployment logs directly from Command Palette
+- Use `@coolify` in Copilot Chat for MVP actions:
+   - Configure server URL and API token
+   - List applications and check status
+   - Start deployments
+   - Read latest deployment logs
+   - Start, stop, and restart applications
+   - Run quick health checks (connectivity + token validation)
+
+### Chat Tools (Configure Tools)
+
+This extension also contributes Coolify tools to Copilot Chat's **Configure Tools** UI. Enable the tools there to allow automatic tool usage by the chat model.
+
+Available tools:
+
+- `coolify.configure`
+- `coolify.healthCheck`
+- `coolify.listApplications`
+- `coolify.getApplicationStatus`
+- `coolify.startDeployment`
+- `coolify.applicationLifecycle`
+- `coolify.getDeploymentLogs`
+
+When adding new features, they only appear in Configure Tools after you:
+
+1. Register runtime tool logic in `src/tools/CoolifyTools.ts`.
+2. Add tool metadata under `contributes.languageModelTools` in `package.json`.
 
 ## Prerequisites
 

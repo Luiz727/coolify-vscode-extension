@@ -13,6 +13,24 @@ Este documento mapeia, de forma prática e priorizada, tudo que pode ser melhora
 
 ## 2) Estado atual (baseline)
 
+### Atualização de status (Mar/2026)
+
+Entregas implementadas recentemente e já disponíveis na extensão:
+
+- Integração com chat por participante `@coolify` (ações MVP).
+- Migração para **Chat Tools** (Language Model Tools) visíveis em **Configurar Ferramentas** do Copilot Chat.
+- Tools adicionadas:
+  - `coolify.configure`
+  - `coolify.healthCheck`
+  - `coolify.listApplications`
+  - `coolify.getApplicationStatus`
+  - `coolify.startDeployment`
+  - `coolify.applicationLifecycle`
+  - `coolify.getDeploymentLogs`
+- Fluxo de packaging/reinstalação local validado com sucesso (`pnpm run package`, `vsce package`, instalação do `.vsix`).
+
+Status prático: a extensão já cobre um MVP operacional por chat + sidebar/commands para configuração, status, deploy, logs e ciclo de vida.
+
 ### Funcionalidades existentes
 
 - Configuração de URL e token do Coolify.
@@ -297,21 +315,23 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 ## 11) Backlog executável (resumo)
 
 ## Segurança (alta prioridade)
-- [ ] Forçar HTTPS por padrão.
-- [ ] CSP + remoção de `innerHTML` inseguro.
+- [x] Forçar HTTPS por padrão (com opt-in explícito para HTTP inseguro).
+- [x] CSP + remoção de `innerHTML` inseguro.
 - [ ] Sanitização centralizada.
 
 ## Core técnico
-- [ ] Cliente API com timeout/retry/classificação de erro.
+- [x] Cliente API com timeout/retry/classificação de erro.
 - [ ] Tipagem estrita de respostas.
 - [ ] Estado da UI explícito.
 
 ## Produto
-- [ ] App details + lifecycle completo.
-- [ ] Deployments avançados (get/cancel/logs).
-- [ ] Multi-contexto.
-- [ ] Env vars CRUD + sync.
+- [x] App details + lifecycle completo.
+- [x] Deployments avançados (get/cancel/logs).
+- [x] Multi-contexto.
+- [x] Env vars CRUD + sync.
 - [ ] Paridade Command Palette ↔ Sidebar para funções operacionais.
+- [x] Chat participant `@coolify` para operações MVP.
+- [x] Language Model Tools no Copilot Chat (Configurar Ferramentas).
 
 ## Engenharia
 - [ ] Testes unitários e integração reais.

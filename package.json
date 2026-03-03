@@ -19,6 +19,14 @@
     "Other"
   ],
   "activationEvents": [
+    "onChatParticipant:coolify.chat",
+    "onLanguageModelTool:coolify-configure",
+    "onLanguageModelTool:coolify-healthCheck",
+    "onLanguageModelTool:coolify-listApplications",
+    "onLanguageModelTool:coolify-getApplicationStatus",
+    "onLanguageModelTool:coolify-startDeployment",
+    "onLanguageModelTool:coolify-applicationLifecycle",
+    "onLanguageModelTool:coolify-getDeploymentLogs",
     "onView:coolify-deployments",
     "onCommand:coolify.configure",
     "onCommand:coolify.reconfigure",
@@ -45,6 +53,187 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "languageModelTools": [
+      {
+        "name": "coolify-configure",
+        "toolReferenceName": "coolifyConfigure",
+        "displayName": "Coolify Configure",
+        "modelDescription": "Opens Coolify configuration flow to set server URL and API token securely.",
+        "userDescription": "Configura URL e token da API do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "configuration"
+        ],
+        "icon": "$(gear)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "coolify-healthCheck",
+        "toolReferenceName": "coolifyHealthCheck",
+        "displayName": "Coolify Health Check",
+        "modelDescription": "Checks Coolify connectivity and API token validity.",
+        "userDescription": "Valida conectividade e token do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "health"
+        ],
+        "icon": "$(pulse)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "coolify-listApplications",
+        "toolReferenceName": "coolifyListApplications",
+        "displayName": "Coolify List Applications",
+        "modelDescription": "Lists available Coolify applications with status and metadata.",
+        "userDescription": "Lista aplicações do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "applications"
+        ],
+        "icon": "$(list-unordered)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "coolify-getApplicationStatus",
+        "toolReferenceName": "coolifyGetApplicationStatus",
+        "displayName": "Coolify Get Application Status",
+        "modelDescription": "Gets status details for a Coolify application by id or name.",
+        "userDescription": "Consulta status de uma aplicação do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "status"
+        ],
+        "icon": "$(info)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "appId": {
+              "type": "string",
+              "description": "Application UUID in Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Application name in Coolify."
+            }
+          }
+        }
+      },
+      {
+        "name": "coolify-startDeployment",
+        "toolReferenceName": "coolifyStartDeployment",
+        "displayName": "Coolify Start Deployment",
+        "modelDescription": "Starts a new deployment for a Coolify application by id or name.",
+        "userDescription": "Inicia deploy de aplicação no Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "deploy"
+        ],
+        "icon": "$(rocket)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "appId": {
+              "type": "string",
+              "description": "Application UUID in Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Application name in Coolify."
+            }
+          }
+        }
+      },
+      {
+        "name": "coolify-applicationLifecycle",
+        "toolReferenceName": "coolifyApplicationLifecycle",
+        "displayName": "Coolify Application Lifecycle",
+        "modelDescription": "Runs start, stop, or restart lifecycle actions for a Coolify application.",
+        "userDescription": "Executa start/stop/restart em aplicação do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "lifecycle"
+        ],
+        "icon": "$(debug-restart)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "start",
+                "stop",
+                "restart"
+              ],
+              "description": "Lifecycle action to run."
+            },
+            "appId": {
+              "type": "string",
+              "description": "Application UUID in Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Application name in Coolify."
+            }
+          },
+          "required": [
+            "action"
+          ]
+        }
+      },
+      {
+        "name": "coolify-getDeploymentLogs",
+        "toolReferenceName": "coolifyGetDeploymentLogs",
+        "displayName": "Coolify Get Deployment Logs",
+        "modelDescription": "Returns logs for a deployment by deployment id or latest deployment from an application.",
+        "userDescription": "Obtém logs de deployment no Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "logs"
+        ],
+        "icon": "$(output)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "deploymentId": {
+              "type": "string",
+              "description": "Deployment identifier in Coolify."
+            },
+            "appId": {
+              "type": "string",
+              "description": "Application UUID in Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Application name in Coolify."
+            }
+          }
+        }
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "coolify.chat",
+        "name": "coolify",
+        "fullName": "Coolify Assistant",
+        "description": "Manage Coolify applications from chat: configure, list, status, deploy, logs, and lifecycle actions."
+      }
+    ],
     "configuration": {
       "title": "Coolify",
       "properties": {

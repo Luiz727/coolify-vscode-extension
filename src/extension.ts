@@ -6,6 +6,8 @@ import { parseEnvFile } from './utils/envFile';
 import { CoolifyService } from './services/CoolifyService';
 import type { EnvironmentVariable } from './services/CoolifyService';
 import { logger } from './services/LoggerService';
+import { registerCoolifyChatParticipant } from './chat/CoolifyChatParticipant';
+import { registerCoolifyTools } from './tools/CoolifyTools';
 
 let webviewProvider: CoolifyWebViewProvider | undefined;
 
@@ -18,6 +20,12 @@ export function activate(context: vscode.ExtensionContext) {
     context.extensionUri,
     configManager
   );
+
+  const chatParticipantDisposable = registerCoolifyChatParticipant(
+    configManager,
+    () => webviewProvider
+  );
+  const coolifyToolDisposables = registerCoolifyTools(configManager);
 
   // Register the webview provider
   const webviewView = vscode.window.registerWebviewViewProvider(
@@ -1434,6 +1442,14 @@ export function activate(context: vscode.ExtensionContext) {
     showDeploymentLogsCommand,
     webviewProvider
   );
+
+  if (chatParticipantDisposable) {
+    context.subscriptions.push(chatParticipantDisposable);
+  }
+
+  if (coolifyToolDisposables.length > 0) {
+    context.subscriptions.push(...coolifyToolDisposables);
+  }
 }
 
 export function deactivate() {

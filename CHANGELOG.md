@@ -40,4 +40,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Tests: replace sample extension test with real contribution/command registration assertions.
 - Architecture: replace `any[]` API mapping paths in webview provider with explicit typed models from `CoolifyService`.
 - Architecture: add typed list-item mappers and safer deployment date sorting to reduce shape/date assumptions in provider reads.
+- Reliability: add runtime guards for applications/deployments payload items and ignore invalid entries with warning logs.
+- Reliability: align `languageModelTools` IDs to VS Code naming rules (`[\w-]+`) to avoid runtime registration warnings.
 - Docs: add security notes for transport configuration.

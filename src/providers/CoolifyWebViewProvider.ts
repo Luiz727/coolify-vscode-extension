@@ -9,6 +9,10 @@ import type {
   EnvironmentVariableUpdateRequest,
 } from '../services/CoolifyService';
 import { logger } from '../services/LoggerService';
+import {
+  isValidCoolifyApplication,
+  isValidCoolifyDeployment,
+} from '../utils/payloadGuards';
 
 // Types and Interfaces
 interface RetryConfig {
@@ -338,8 +342,24 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const uiApplications = this.mapApplicationsToUI(applications, serverUrl);
-    const uiDeployments = this.mapDeploymentsToUI(deployments);
+    const validApplications = applications.filter(isValidCoolifyApplication);
+    const invalidApplicationsCount = applications.length - validApplications.length;
+    if (invalidApplicationsCount > 0) {
+      logger.warn('Ignoring invalid application items from API response', {
+        invalidApplicationsCount,
+      });
+    }
+
+    const validDeployments = deployments.filter(isValidCoolifyDeployment);
+    const invalidDeploymentsCount = deployments.length - validDeployments.length;
+    if (invalidDeploymentsCount > 0) {
+      logger.warn('Ignoring invalid deployment items from API response', {
+        invalidDeploymentsCount,
+      });
+    }
+
+    const uiApplications = this.mapApplicationsToUI(validApplications, serverUrl);
+    const uiDeployments = this.mapDeploymentsToUI(validDeployments);
 
     this._view!.webview.postMessage({
       type: 'refresh-data',
