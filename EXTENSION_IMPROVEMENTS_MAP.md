@@ -338,7 +338,7 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 ## Engenharia
 - [x] Testes unitários e integração reais.
 - [x] CI com gates de qualidade.
-- [ ] Changelog e documentação atualizados (changelog em dia; documentação funcional ainda parcial).
+- [x] Changelog e documentação atualizados.
 
 ---
 
@@ -346,7 +346,7 @@ Benefício: mais testável, menos acoplado ao WebviewProvider.
 
 Itens ainda faltantes para fechar o plano com qualidade de produção:
 
-1. **Documentação final** (matriz suportado/não suportado, troubleshooting completo, guia de segurança ampliado).
+Todos os itens prioritários do plano atual foram concluídos.
 
 ---
 

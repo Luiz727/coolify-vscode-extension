@@ -30,13 +30,13 @@ This extension also contributes Coolify tools to Copilot Chat's **Configure Tool
 
 Available tools:
 
-- `coolify.configure`
-- `coolify.healthCheck`
-- `coolify.listApplications`
-- `coolify.getApplicationStatus`
-- `coolify.startDeployment`
-- `coolify.applicationLifecycle`
-- `coolify.getDeploymentLogs`
+- `coolify-configure`
+- `coolify-healthCheck`
+- `coolify-listApplications`
+- `coolify-getApplicationStatus`
+- `coolify-startDeployment`
+- `coolify-applicationLifecycle`
+- `coolify-getDeploymentLogs`
 
 When adding new features, they only appear in Configure Tools after you:
 
@@ -92,3 +92,7 @@ Initial release of VSCode Coolify Extension with the following features:
 - Insecure HTTP connections are blocked by default.
 - If you must use HTTP in a trusted local network, enable `coolify.allowInsecureHttp` in VS Code settings.
 - Webview content is protected with CSP and nonce-based script policy.
+
+## Documentation
+
+- [Operational Guide](docs/OPERATIONAL_GUIDE.md) — supported/unsupported matrix, troubleshooting, and expanded security guidance.
