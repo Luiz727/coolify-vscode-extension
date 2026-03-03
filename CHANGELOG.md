@@ -11,4 +11,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Security: harden Webview with CSP + nonce and safer DOM rendering.
 - Reliability: introduce typed HTTP client with timeout and API error classification.
 - Reliability: improve user-facing error handling for auth/network/server failures.
+- Reliability: apply selective retry strategy (retry only transient timeout/network/5xx errors).
 - Docs: add security notes for transport configuration.
