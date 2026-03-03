@@ -27,6 +27,10 @@
     "onLanguageModelTool:coolify-startDeployment",
     "onLanguageModelTool:coolify-applicationLifecycle",
     "onLanguageModelTool:coolify-getDeploymentLogs",
+    "onLanguageModelTool:coolify-listServices",
+    "onLanguageModelTool:coolify-serviceLifecycle",
+    "onLanguageModelTool:coolify-listDatabases",
+    "onLanguageModelTool:coolify-databaseLifecycle",
     "onView:coolify-deployments",
     "onCommand:coolify.configure",
     "onCommand:coolify.reconfigure",
@@ -232,6 +236,118 @@
               "description": "Application name in Coolify."
             }
           }
+        }
+      },
+      {
+        "name": "coolify-listServices",
+        "toolReferenceName": "coolifyListServices",
+        "displayName": "Coolify List Services",
+        "modelDescription": "Lists available Coolify services with status and metadata.",
+        "userDescription": "Lista serviços do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "services"
+        ],
+        "icon": "$(server)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "coolify-serviceLifecycle",
+        "toolReferenceName": "coolifyServiceLifecycle",
+        "displayName": "Coolify Service Lifecycle",
+        "modelDescription": "Runs start, stop, or restart lifecycle actions for a Coolify service.",
+        "userDescription": "Executa start/stop/restart em serviço do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "services",
+          "lifecycle"
+        ],
+        "icon": "$(debug-restart)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "start",
+                "stop",
+                "restart"
+              ],
+              "description": "Lifecycle action to run."
+            },
+            "serviceId": {
+              "type": "string",
+              "description": "Service UUID in Coolify."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Service name in Coolify."
+            }
+          },
+          "required": [
+            "action"
+          ]
+        }
+      },
+      {
+        "name": "coolify-listDatabases",
+        "toolReferenceName": "coolifyListDatabases",
+        "displayName": "Coolify List Databases",
+        "modelDescription": "Lists available Coolify databases with status and metadata.",
+        "userDescription": "Lista bancos de dados do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "databases"
+        ],
+        "icon": "$(database)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "coolify-databaseLifecycle",
+        "toolReferenceName": "coolifyDatabaseLifecycle",
+        "displayName": "Coolify Database Lifecycle",
+        "modelDescription": "Runs start, stop, or restart lifecycle actions for a Coolify database.",
+        "userDescription": "Executa start/stop/restart em banco de dados do Coolify.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "databases",
+          "lifecycle"
+        ],
+        "icon": "$(debug-restart)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "start",
+                "stop",
+                "restart"
+              ],
+              "description": "Lifecycle action to run."
+            },
+            "databaseId": {
+              "type": "string",
+              "description": "Database UUID in Coolify."
+            },
+            "databaseName": {
+              "type": "string",
+              "description": "Database name in Coolify."
+            }
+          },
+          "required": [
+            "action"
+          ]
         }
       }
     ],

@@ -55,7 +55,7 @@ Expandir a extensão para cobrir mais operações da API do Coolify com foco em 
 - [x] `GET /api/v1/databases/{uuid}` detalhes completos no sidebar
 - [x] Backups de database (listar/criar/restaurar) no sidebar
 - [x] `GET /api/v1/projects` e `GET /api/v1/projects/{uuid}/...` para navegação por projeto/ambiente
-- [ ] Tooling de chat para services/databases (languageModelTools)
+- [x] Tooling de chat para services/databases (languageModelTools)
 - [x] Seções dedicadas no sidebar para services/databases (paridade visual total)
 
 ## Critérios de aceite

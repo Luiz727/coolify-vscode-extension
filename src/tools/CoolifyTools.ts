@@ -3,6 +3,8 @@ import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { CoolifyService } from '../services/CoolifyService';
 import type {
   Application as CoolifyApplication,
+  DatabaseResource,
+  ServiceResource,
 } from '../services/CoolifyService';
 import { logger } from '../services/LoggerService';
 
@@ -320,6 +322,139 @@ export function registerCoolifyTools(
         },
       },
     ],
+    [
+      'coolify-listServices',
+      {
+        prepareInvocation: () => toolPrepareMessage('Listando serviços do Coolify...'),
+        invoke: async () => {
+          const service = await getService(configManager);
+          const services = await service.getServices();
+
+          return createToolResult({
+            count: services.length,
+            services: services.map((item) => ({
+              id: item.uuid,
+              name: item.name,
+              status: item.status,
+              description: item.description || '',
+            })),
+          });
+        },
+      },
+    ],
+    [
+      'coolify-serviceLifecycle',
+      {
+        prepareInvocation: (options) => {
+          const input = (options.input || {}) as { action?: string };
+          const action = input.action || 'start';
+          return toolPrepareMessage(`Executando ação ${action} no serviço...`);
+        },
+        invoke: async (options) => {
+          const input = (options.input || {}) as {
+            action?: 'start' | 'stop' | 'restart';
+            serviceId?: string;
+            serviceName?: string;
+          };
+
+          const action = input.action || 'start';
+          if (!['start', 'stop', 'restart'].includes(action)) {
+            throw new Error('Ação inválida. Use start, stop ou restart.');
+          }
+
+          const service = await getService(configManager);
+          const target = await findServiceByInput(
+            service,
+            input.serviceId,
+            input.serviceName
+          );
+
+          let message = '';
+          if (action === 'start') {
+            message = await service.startService(target.uuid);
+          } else if (action === 'stop') {
+            message = await service.stopService(target.uuid);
+          } else {
+            message = await service.restartService(target.uuid);
+          }
+
+          return createToolResult({
+            ok: true,
+            action,
+            serviceId: target.uuid,
+            serviceName: target.name,
+            message,
+          });
+        },
+      },
+    ],
+    [
+      'coolify-listDatabases',
+      {
+        prepareInvocation: () =>
+          toolPrepareMessage('Listando bancos de dados do Coolify...'),
+        invoke: async () => {
+          const service = await getService(configManager);
+          const databases = await service.getDatabases();
+
+          return createToolResult({
+            count: databases.length,
+            databases: databases.map((item) => ({
+              id: item.uuid,
+              name: item.name,
+              status: item.status,
+              description: item.description || '',
+            })),
+          });
+        },
+      },
+    ],
+    [
+      'coolify-databaseLifecycle',
+      {
+        prepareInvocation: (options) => {
+          const input = (options.input || {}) as { action?: string };
+          const action = input.action || 'start';
+          return toolPrepareMessage(`Executando ação ${action} no banco de dados...`);
+        },
+        invoke: async (options) => {
+          const input = (options.input || {}) as {
+            action?: 'start' | 'stop' | 'restart';
+            databaseId?: string;
+            databaseName?: string;
+          };
+
+          const action = input.action || 'start';
+          if (!['start', 'stop', 'restart'].includes(action)) {
+            throw new Error('Ação inválida. Use start, stop ou restart.');
+          }
+
+          const service = await getService(configManager);
+          const target = await findDatabaseByInput(
+            service,
+            input.databaseId,
+            input.databaseName
+          );
+
+          let message = '';
+          if (action === 'start') {
+            message = await service.startDatabase(target.uuid);
+          } else if (action === 'stop') {
+            message = await service.stopDatabase(target.uuid);
+          } else {
+            message = await service.restartDatabase(target.uuid);
+          }
+
+          return createToolResult({
+            ok: true,
+            action,
+            databaseId: target.uuid,
+            databaseName: target.name,
+            message,
+          });
+        },
+      },
+    ],
   ];
 
   const disposables: vscode.Disposable[] = [];
@@ -332,4 +467,78 @@ export function registerCoolifyTools(
   }
 
   return disposables;
+}
+
+async function findServiceByInput(
+  service: CoolifyService,
+  serviceId?: string,
+  serviceName?: string
+): Promise<ServiceResource> {
+  const services = await service.getServices();
+  if (!services.length) {
+    throw new Error('Nenhum serviço encontrado no Coolify.');
+  }
+
+  if (serviceId) {
+    const byId = services.find((item) => item.uuid === serviceId);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  if (serviceName) {
+    const target = normalize(serviceName);
+    const exact = services.find((item) => normalize(item.name) === target);
+    if (exact) {
+      return exact;
+    }
+
+    const partial = services.find((item) => normalize(item.name).includes(target));
+    if (partial) {
+      return partial;
+    }
+  }
+
+  if (services.length === 1) {
+    return services[0];
+  }
+
+  throw new Error('Serviço não encontrado. Informe serviceId ou serviceName com um valor válido.');
+}
+
+async function findDatabaseByInput(
+  service: CoolifyService,
+  databaseId?: string,
+  databaseName?: string
+): Promise<DatabaseResource> {
+  const databases = await service.getDatabases();
+  if (!databases.length) {
+    throw new Error('Nenhum banco de dados encontrado no Coolify.');
+  }
+
+  if (databaseId) {
+    const byId = databases.find((item) => item.uuid === databaseId);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  if (databaseName) {
+    const target = normalize(databaseName);
+    const exact = databases.find((item) => normalize(item.name) === target);
+    if (exact) {
+      return exact;
+    }
+
+    const partial = databases.find((item) => normalize(item.name).includes(target));
+    if (partial) {
+      return partial;
+    }
+  }
+
+  if (databases.length === 1) {
+    return databases[0];
+  }
+
+  throw new Error('Banco de dados não encontrado. Informe databaseId ou databaseName com um valor válido.');
 }

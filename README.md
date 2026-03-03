@@ -40,6 +40,10 @@ Available tools:
 - `coolify-startDeployment`
 - `coolify-applicationLifecycle`
 - `coolify-getDeploymentLogs`
+- `coolify-listServices`
+- `coolify-serviceLifecycle`
+- `coolify-listDatabases`
+- `coolify-databaseLifecycle`
 
 When adding new features, they only appear in Configure Tools after you:
 
