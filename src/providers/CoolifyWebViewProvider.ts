@@ -138,7 +138,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
-        if (attempt === retryConfig.maxAttempts) {
+        const canRetry = this.shouldRetryError(error);
+
+        if (!canRetry || attempt === retryConfig.maxAttempts) {
           throw lastError;
         }
 
@@ -152,6 +154,18 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }
 
     throw lastError;
+  }
+
+  private shouldRetryError(error: unknown): boolean {
+    if (!(error instanceof CoolifyApiError)) {
+      return true;
+    }
+
+    return (
+      error.type === 'timeout' ||
+      error.type === 'network' ||
+      error.type === 'server'
+    );
   }
 
   // Refresh Management
