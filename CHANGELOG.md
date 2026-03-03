@@ -26,4 +26,18 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Feature: add context selector directly in sidebar (webview) for quick context switching.
 - Feature: add application environment variables CRUD commands (list/create/update/delete).
 - Feature: add sidebar actions for env vars per application (`Envs` and `Add Env`).
+- UX: add inline env vars panel in sidebar with direct per-variable edit/delete actions.
+- UX: add deployments filters in sidebar (status + application name) with persisted state.
+- UX: add status bar indicator for active context with quick context switching.
+- UX: add `Open` action in sidebar cards to open application/deployment URLs in browser when available.
+- Feature: add `.env` sync flow with diff preview (add/update/full-sync) and conflict resolution strategy by key (`.env` vs remote).
+- Feature: add setting `coolify.envSyncConflictStrategy` to persist default conflict strategy for `.env` sync.
+- UX: add command `Coolify: Set Env Sync Conflict Strategy` for quick strategy changes from Command Palette.
+- UX: add sidebar selector for env sync conflict strategy, synchronized with global setting.
+- CI: add GitHub Actions workflow running typecheck, lint, compile-tests and test on push/PR.
+- Tests: add mocked integration coverage for `CoolifyService` endpoints used by deployments/lifecycle/env vars.
+- CI: add coverage gate (`test:coverage`) with initial baseline thresholds for lines/functions/branches/statements.
+- Tests: replace sample extension test with real contribution/command registration assertions.
+- Architecture: replace `any[]` API mapping paths in webview provider with explicit typed models from `CoolifyService`.
+- Architecture: add typed list-item mappers and safer deployment date sorting to reduce shape/date assumptions in provider reads.
 - Docs: add security notes for transport configuration.

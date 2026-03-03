@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from './managers/ConfigurationManager';
 import { CoolifyWebViewProvider } from './providers/CoolifyWebViewProvider';
 import { isValidUrl, normalizeUrl } from './utils/urlValidator';
+import { parseEnvFile } from './utils/envFile';
 import { CoolifyService } from './services/CoolifyService';
 import type { EnvironmentVariable } from './services/CoolifyService';
 import { logger } from './services/LoggerService';
@@ -24,6 +25,29 @@ export function activate(context: vscode.ExtensionContext) {
     webviewProvider
   );
 
+  const contextStatusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    100
+  );
+  contextStatusBarItem.command = 'coolify.switchContext';
+
+  async function updateContextStatusBar() {
+    const activeContextName = await configManager.getActiveContextName();
+    const isConfigured = await configManager.isConfigured();
+
+    contextStatusBarItem.text = `$(server-environment) Coolify: ${activeContextName}`;
+    contextStatusBarItem.tooltip = isConfigured
+      ? `Active context: ${activeContextName} (configured)`
+      : `Active context: ${activeContextName} (not configured)`;
+    contextStatusBarItem.backgroundColor = isConfigured
+      ? undefined
+      : new vscode.ThemeColor('statusBarItem.warningBackground');
+    contextStatusBarItem.color = isConfigured
+      ? undefined
+      : new vscode.ThemeColor('statusBarItem.warningForeground');
+    contextStatusBarItem.show();
+  }
+
   // Function to update configuration state
   async function updateConfigurationState() {
     const isConfigured = await configManager.isConfigured();
@@ -35,6 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Update the webview if it exists
     webviewProvider?.updateView();
+    await updateContextStatusBar();
   }
 
   // Initial configuration state
@@ -194,7 +219,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const switchContextCommand = vscode.commands.registerCommand(
     'coolify.switchContext',
-    async () => {
+    async (contextNameArg?: string) => {
       const contextNames = await configManager.getContextNames();
       if (contextNames.length === 0) {
         vscode.window.showInformationMessage(
@@ -204,26 +229,44 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       const activeContextName = await configManager.getActiveContextName();
-      const selected = await vscode.window.showQuickPick(
-        contextNames.map((name) => ({
-          label: name,
-          description: name === activeContextName ? 'active' : '',
-        })),
-        {
-          placeHolder: 'Select the active Coolify context',
-          title: 'Switch Coolify Context',
-        }
-      );
+      let selectedContextName = contextNameArg;
 
-      if (!selected) {
+      if (!selectedContextName) {
+        const selected = await vscode.window.showQuickPick(
+          contextNames.map((name) => ({
+            label: name,
+            description: name === activeContextName ? 'active' : '',
+          })),
+          {
+            placeHolder: 'Select the active Coolify context',
+            title: 'Switch Coolify Context',
+          }
+        );
+
+        if (!selected) {
+          return;
+        }
+
+        selectedContextName = selected.label;
+      }
+
+      if (!contextNames.includes(selectedContextName)) {
+        vscode.window.showErrorMessage(
+          `Context "${selectedContextName}" not found.`
+        );
         return;
       }
 
-      await configManager.setActiveContext(selected.label);
+      if (selectedContextName === activeContextName) {
+        await updateConfigurationState();
+        return;
+      }
+
+      await configManager.setActiveContext(selectedContextName);
       await updateConfigurationState();
 
       vscode.window.showInformationMessage(
-        `Switched active context to "${selected.label}".`
+        `Switched active context to "${selectedContextName}".`
       );
     }
   );
@@ -444,16 +487,59 @@ export function activate(context: vscode.ExtensionContext) {
     };
   }
 
+  type EnvironmentVariableCommandArgs = {
+    applicationId?: string;
+    environmentVariableUuid?: string;
+    environmentVariableKey?: string;
+  };
+
+  type EnvSyncConflictStrategy = 'prompt' | 'file-all' | 'remote-all' | 'per-key';
+
+  type SyncEnvironmentVariablesCommandArgs = EnvironmentVariableCommandArgs & {
+    filePath?: string;
+    conflictStrategy?: EnvSyncConflictStrategy;
+  };
+
+  function normalizeEnvironmentVariableArgs(
+    args?: string | EnvironmentVariableCommandArgs
+  ): EnvironmentVariableCommandArgs {
+    if (!args) {
+      return {};
+    }
+
+    if (typeof args === 'string') {
+      return { applicationId: args };
+    }
+
+    return args;
+  }
+
+  function normalizeSyncEnvironmentVariableArgs(
+    args?: string | SyncEnvironmentVariablesCommandArgs
+  ): SyncEnvironmentVariablesCommandArgs {
+    if (!args) {
+      return {};
+    }
+
+    if (typeof args === 'string') {
+      return { applicationId: args };
+    }
+
+    return args;
+  }
+
   const listEnvironmentVariablesCommand = vscode.commands.registerCommand(
     'coolify.listEnvironmentVariables',
-    async (applicationId?: string) => {
+    async (args?: string | EnvironmentVariableCommandArgs) => {
       try {
         if (!webviewProvider) {
           vscode.window.showErrorMessage('Coolify provider not initialized');
           return;
         }
 
-        const selectedApp = await selectApplication(applicationId);
+        const commandArgs = normalizeEnvironmentVariableArgs(args);
+
+        const selectedApp = await selectApplication(commandArgs.applicationId);
         if (!selectedApp) {
           return;
         }
@@ -495,14 +581,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   const createEnvironmentVariableCommand = vscode.commands.registerCommand(
     'coolify.createEnvironmentVariable',
-    async (applicationId?: string) => {
+    async (args?: string | EnvironmentVariableCommandArgs) => {
       try {
         if (!webviewProvider) {
           vscode.window.showErrorMessage('Coolify provider not initialized');
           return;
         }
 
-        const selectedApp = await selectApplication(applicationId);
+        const commandArgs = normalizeEnvironmentVariableArgs(args);
+
+        const selectedApp = await selectApplication(commandArgs.applicationId);
         if (!selectedApp) {
           return;
         }
@@ -551,14 +639,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   const updateEnvironmentVariableCommand = vscode.commands.registerCommand(
     'coolify.updateEnvironmentVariable',
-    async (applicationId?: string) => {
+    async (args?: string | EnvironmentVariableCommandArgs) => {
       try {
         if (!webviewProvider) {
           vscode.window.showErrorMessage('Coolify provider not initialized');
           return;
         }
 
-        const selectedApp = await selectApplication(applicationId);
+        const commandArgs = normalizeEnvironmentVariableArgs(args);
+
+        const selectedApp = await selectApplication(commandArgs.applicationId);
         if (!selectedApp) {
           return;
         }
@@ -571,13 +661,28 @@ export function activate(context: vscode.ExtensionContext) {
           return;
         }
 
-        const selectedEnvItem = await vscode.window.showQuickPick(
-          envs.map(mapEnvToQuickPickItem),
-          {
-            placeHolder: 'Select an environment variable to update',
-            title: 'Update Environment Variable',
-          }
-        );
+        let selectedEnvItem;
+        if (commandArgs.environmentVariableUuid) {
+          selectedEnvItem = envs
+            .map(mapEnvToQuickPickItem)
+            .find((item) => item.env.uuid === commandArgs.environmentVariableUuid);
+        }
+
+        if (!selectedEnvItem && commandArgs.environmentVariableKey) {
+          selectedEnvItem = envs
+            .map(mapEnvToQuickPickItem)
+            .find((item) => item.env.key === commandArgs.environmentVariableKey);
+        }
+
+        if (!selectedEnvItem) {
+          selectedEnvItem = await vscode.window.showQuickPick(
+            envs.map(mapEnvToQuickPickItem),
+            {
+              placeHolder: 'Select an environment variable to update',
+              title: 'Update Environment Variable',
+            }
+          );
+        }
 
         if (!selectedEnvItem) {
           return;
@@ -616,14 +721,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   const deleteEnvironmentVariableCommand = vscode.commands.registerCommand(
     'coolify.deleteEnvironmentVariable',
-    async (applicationId?: string) => {
+    async (args?: string | EnvironmentVariableCommandArgs) => {
       try {
         if (!webviewProvider) {
           vscode.window.showErrorMessage('Coolify provider not initialized');
           return;
         }
 
-        const selectedApp = await selectApplication(applicationId);
+        const commandArgs = normalizeEnvironmentVariableArgs(args);
+
+        const selectedApp = await selectApplication(commandArgs.applicationId);
         if (!selectedApp) {
           return;
         }
@@ -636,13 +743,28 @@ export function activate(context: vscode.ExtensionContext) {
           return;
         }
 
-        const selectedEnvItem = await vscode.window.showQuickPick(
-          envs.map(mapEnvToQuickPickItem),
-          {
-            placeHolder: 'Select an environment variable to delete',
-            title: 'Delete Environment Variable',
-          }
-        );
+        let selectedEnvItem;
+        if (commandArgs.environmentVariableUuid) {
+          selectedEnvItem = envs
+            .map(mapEnvToQuickPickItem)
+            .find((item) => item.env.uuid === commandArgs.environmentVariableUuid);
+        }
+
+        if (!selectedEnvItem && commandArgs.environmentVariableKey) {
+          selectedEnvItem = envs
+            .map(mapEnvToQuickPickItem)
+            .find((item) => item.env.key === commandArgs.environmentVariableKey);
+        }
+
+        if (!selectedEnvItem) {
+          selectedEnvItem = await vscode.window.showQuickPick(
+            envs.map(mapEnvToQuickPickItem),
+            {
+              placeHolder: 'Select an environment variable to delete',
+              title: 'Delete Environment Variable',
+            }
+          );
+        }
 
         if (!selectedEnvItem) {
           return;
@@ -671,6 +793,305 @@ export function activate(context: vscode.ExtensionContext) {
           error instanceof Error
             ? error.message
             : 'Failed to delete environment variable'
+        );
+      }
+    }
+  );
+
+  const syncEnvironmentVariablesFromFileCommand = vscode.commands.registerCommand(
+    'coolify.syncEnvironmentVariablesFromFile',
+    async (args?: string | SyncEnvironmentVariablesCommandArgs) => {
+      try {
+        if (!webviewProvider) {
+          vscode.window.showErrorMessage('Coolify provider not initialized');
+          return;
+        }
+
+        const commandArgs = normalizeSyncEnvironmentVariableArgs(args);
+        const selectedApp = await selectApplication(commandArgs.applicationId);
+        if (!selectedApp) {
+          return;
+        }
+
+        let selectedFilePath = commandArgs.filePath;
+        if (!selectedFilePath) {
+          const picked = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: 'Select .env file',
+            filters: {
+              EnvFiles: ['env'],
+              AllFiles: ['*'],
+            },
+            defaultUri:
+              vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file(process.cwd()),
+          });
+
+          if (!picked?.length) {
+            return;
+          }
+
+          selectedFilePath = picked[0].fsPath;
+        }
+
+        const envFileUri = vscode.Uri.file(selectedFilePath);
+        const fileData = await vscode.workspace.fs.readFile(envFileUri);
+        const fileContent = Buffer.from(fileData).toString('utf-8');
+        const parsedEntries = parseEnvFile(fileContent);
+
+        if (!parsedEntries.length) {
+          vscode.window.showWarningMessage(
+            `No valid environment variables found in ${selectedFilePath}.`
+          );
+          return;
+        }
+
+        const fileMap = new Map<string, string>();
+        parsedEntries.forEach((entry) => {
+          fileMap.set(entry.key, entry.value);
+        });
+
+        const remoteEnvs = await webviewProvider.listEnvironmentVariables(selectedApp.id);
+        const remoteByKey = new Map<string, EnvironmentVariable>();
+        remoteEnvs.forEach((env) => {
+          remoteByKey.set(env.key, env);
+        });
+
+        const toCreate = Array.from(fileMap.entries())
+          .filter(([key]) => !remoteByKey.has(key))
+          .map(([key, value]) => ({ key, value }));
+
+        const conflictCandidates = Array.from(fileMap.entries())
+          .filter(([key, value]) => {
+            const remote = remoteByKey.get(key);
+            return !!remote && remote.value !== value;
+          })
+          .map(([key, value]) => ({ key, value, remote: remoteByKey.get(key)! }));
+
+        let toUpdate = conflictCandidates;
+        let keptRemoteConflicts: string[] = [];
+
+        if (conflictCandidates.length > 0) {
+          const configuredStrategy = vscode.workspace
+            .getConfiguration('coolify')
+            .get<EnvSyncConflictStrategy>('envSyncConflictStrategy', 'prompt');
+
+          const resolvedStrategy =
+            commandArgs.conflictStrategy || configuredStrategy;
+
+          let strategyValue: Exclude<EnvSyncConflictStrategy, 'prompt'>;
+
+          if (resolvedStrategy === 'prompt') {
+            const strategy = await vscode.window.showQuickPick(
+              [
+                {
+                  label: 'Use .env values for all conflicts',
+                  description: `${conflictCandidates.length} keys will be updated`,
+                  value: 'file-all' as const,
+                },
+                {
+                  label: 'Keep remote values for all conflicts',
+                  description: `${conflictCandidates.length} keys will stay unchanged`,
+                  value: 'remote-all' as const,
+                },
+                {
+                  label: 'Resolve per key',
+                  description: 'Choose source for each conflicting key',
+                  value: 'per-key' as const,
+                },
+              ],
+              {
+                placeHolder: 'Resolve environment variable conflicts',
+                title: `Conflict strategy for ${selectedApp.name}`,
+              }
+            );
+
+            if (!strategy) {
+              return;
+            }
+
+            strategyValue = strategy.value;
+          } else {
+            strategyValue = resolvedStrategy;
+          }
+
+          if (strategyValue === 'remote-all') {
+            toUpdate = [];
+            keptRemoteConflicts = conflictCandidates.map((item) => item.key);
+          } else if (strategyValue === 'per-key') {
+            const chosenUpdates: typeof conflictCandidates = [];
+
+            for (const conflict of conflictCandidates) {
+              const choice = await vscode.window.showQuickPick(
+                [
+                  {
+                    label: 'Use value from .env',
+                    description: `${conflict.key}`,
+                    detail: `Apply file value for ${conflict.key}`,
+                    value: 'file' as const,
+                  },
+                  {
+                    label: 'Keep remote value',
+                    description: `${conflict.key}`,
+                    detail: `Keep current remote value for ${conflict.key}`,
+                    value: 'remote' as const,
+                  },
+                ],
+                {
+                  placeHolder: `Resolve conflict for ${conflict.key}`,
+                  title: `Conflict ${conflict.key}`,
+                }
+              );
+
+              if (!choice) {
+                return;
+              }
+
+              if (choice.value === 'file') {
+                chosenUpdates.push(conflict);
+              } else {
+                keptRemoteConflicts.push(conflict.key);
+              }
+            }
+
+            toUpdate = chosenUpdates;
+          }
+        }
+
+        const toDelete = remoteEnvs.filter((env) => !fileMap.has(env.key));
+
+        const diffLines: string[] = [
+          `# Coolify Env Sync Preview - ${selectedApp.name}`,
+          '',
+          `File: ${selectedFilePath}`,
+          `Create: ${toCreate.length} | Update: ${toUpdate.length} | Delete (full sync): ${toDelete.length}`,
+          '',
+        ];
+
+        if (toCreate.length) {
+          diffLines.push('## To Create');
+          toCreate.forEach((item) => {
+            diffLines.push(`+ ${item.key}`);
+          });
+          diffLines.push('');
+        }
+
+        if (toUpdate.length) {
+          diffLines.push('## To Update');
+          toUpdate.forEach((item) => {
+            diffLines.push(`~ ${item.key}`);
+          });
+          diffLines.push('');
+        }
+
+        if (keptRemoteConflicts.length) {
+          diffLines.push('## Conflicts Kept Remote');
+          keptRemoteConflicts.forEach((key) => {
+            diffLines.push(`= ${key}`);
+          });
+          diffLines.push('');
+        }
+
+        if (toDelete.length) {
+          diffLines.push('## To Delete (only if full sync)');
+          toDelete.forEach((item) => {
+            diffLines.push(`- ${item.key}`);
+          });
+          diffLines.push('');
+        }
+
+        if (!toCreate.length && !toUpdate.length && !toDelete.length) {
+          vscode.window.showInformationMessage(
+            `No changes detected for ${selectedApp.name}.`
+          );
+          return;
+        }
+
+        const diffDocument = await vscode.workspace.openTextDocument({
+          language: 'markdown',
+          content: diffLines.join('\n'),
+        });
+        await vscode.window.showTextDocument(diffDocument, { preview: true });
+
+        const action = await vscode.window.showWarningMessage(
+          `Apply environment sync for ${selectedApp.name}?`,
+          { modal: true },
+          'Apply Add/Update',
+          'Apply Full Sync',
+          'Cancel'
+        );
+
+        if (!action || action === 'Cancel') {
+          return;
+        }
+
+        const removeMissing = action === 'Apply Full Sync';
+
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Syncing env vars for ${selectedApp.name}`,
+            cancellable: false,
+          },
+          async (progress) => {
+            let step = 0;
+            const totalSteps =
+              toCreate.length + toUpdate.length + (removeMissing ? toDelete.length : 0);
+
+            const reportProgress = (message: string) => {
+              step += 1;
+              progress.report({
+                increment: totalSteps > 0 ? 100 / totalSteps : 100,
+                message,
+              });
+            };
+
+            for (const item of toCreate) {
+              await webviewProvider!.createEnvironmentVariable(selectedApp.id, {
+                key: item.key,
+                value: item.value,
+                is_buildtime: true,
+                is_runtime: true,
+                is_preview: false,
+              });
+              reportProgress(`Created ${item.key}`);
+            }
+
+            for (const item of toUpdate) {
+              await webviewProvider!.updateEnvironmentVariable(selectedApp.id, {
+                uuid: item.remote.uuid,
+                key: item.key,
+                value: item.value,
+                is_buildtime: item.remote.is_buildtime,
+                is_runtime: item.remote.is_runtime,
+                is_preview: item.remote.is_preview,
+                is_literal: item.remote.is_literal,
+                is_multiline: item.remote.is_multiline,
+              });
+              reportProgress(`Updated ${item.key}`);
+            }
+
+            if (removeMissing) {
+              for (const item of toDelete) {
+                await webviewProvider!.deleteEnvironmentVariable(
+                  selectedApp.id,
+                  item.uuid
+                );
+                reportProgress(`Deleted ${item.key}`);
+              }
+            }
+          }
+        );
+
+        await webviewProvider.refreshData();
+
+        vscode.window.showInformationMessage(
+          `Env sync completed for ${selectedApp.name}. Created: ${toCreate.length}, Updated: ${toUpdate.length}, Deleted: ${removeMissing ? toDelete.length : 0}.`
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'Failed to sync environment variables from file'
         );
       }
     }
@@ -712,6 +1133,56 @@ export function activate(context: vscode.ExtensionContext) {
         selected.value === 'pt-BR'
           ? 'Idioma alterado para Português (Brasil).'
           : 'Language changed to English.'
+      );
+    }
+  );
+
+  const setEnvSyncConflictStrategyCommand = vscode.commands.registerCommand(
+    'coolify.setEnvSyncConflictStrategy',
+    async () => {
+      const selected = await vscode.window.showQuickPick(
+        [
+          {
+            label: 'Prompt every time',
+            description: 'Ask when conflicts are found during .env sync',
+            value: 'prompt' as EnvSyncConflictStrategy,
+          },
+          {
+            label: 'Always use .env values',
+            description: 'Apply file values for all conflicting keys',
+            value: 'file-all' as EnvSyncConflictStrategy,
+          },
+          {
+            label: 'Always keep remote values',
+            description: 'Keep current remote values for conflicting keys',
+            value: 'remote-all' as EnvSyncConflictStrategy,
+          },
+          {
+            label: 'Resolve per key',
+            description: 'Choose source for each conflicting key',
+            value: 'per-key' as EnvSyncConflictStrategy,
+          },
+        ],
+        {
+          placeHolder: 'Select default conflict strategy for .env sync',
+          title: 'Coolify Env Sync Strategy',
+        }
+      );
+
+      if (!selected) {
+        return;
+      }
+
+      await vscode.workspace
+        .getConfiguration('coolify')
+        .update(
+          'envSyncConflictStrategy',
+          selected.value,
+          vscode.ConfigurationTarget.Global
+        );
+
+      vscode.window.showInformationMessage(
+        `Default env sync strategy set to "${selected.value}".`
       );
     }
   );
@@ -943,6 +1414,7 @@ export function activate(context: vscode.ExtensionContext) {
     createContextCommand,
     switchContextCommand,
     deleteContextCommand,
+    contextStatusBarItem,
     refreshApplicationsCommand,
     startDeploymentCommand,
     startApplicationCommand,
@@ -953,7 +1425,9 @@ export function activate(context: vscode.ExtensionContext) {
     createEnvironmentVariableCommand,
     updateEnvironmentVariableCommand,
     deleteEnvironmentVariableCommand,
+    syncEnvironmentVariablesFromFileCommand,
     selectLanguageCommand,
+    setEnvSyncConflictStrategyCommand,
     listDeploymentsCommand,
     showDeploymentDetailsCommand,
     cancelDeploymentCommand,

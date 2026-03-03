@@ -88,6 +88,19 @@
         min-width: 140px;
       }
 
+      .text-filter {
+        padding: 4px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--vscode-widget-border);
+        background: var(
+          --vscode-input-background,
+          var(--vscode-dropdown-background)
+        );
+        color: var(--vscode-input-foreground, var(--vscode-dropdown-foreground));
+        font-size: 12px;
+        min-width: 150px;
+      }
+
       .context-select {
         min-width: 180px;
       }
@@ -338,6 +351,39 @@
         gap: 6px;
       }
 
+      .env-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border-top: 1px dashed var(--vscode-widget-border);
+        padding-top: 10px;
+      }
+
+      .env-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .env-key {
+        font-size: 12px;
+        color: var(--vscode-foreground);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .env-actions {
+        display: inline-flex;
+        gap: 4px;
+      }
+
+      .env-empty {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+      }
+
       .loading {
         display: flex;
         align-items: center;
@@ -425,6 +471,17 @@
         <select id="status-filter" class="status-filter" title="Filter by container status">
           <option value="all">All containers</option>
         </select>
+        <span class="filter-label" id="env-sync-strategy-label">Env sync:</span>
+        <select
+          id="env-sync-strategy"
+          class="status-filter"
+          title="Default strategy for .env sync conflicts"
+        >
+          <option value="prompt">Prompt</option>
+          <option value="file-all">Use .env</option>
+          <option value="remote-all">Keep remote</option>
+          <option value="per-key">Per key</option>
+        </select>
         <label class="favorite-toggle" for="favorites-only-toggle">
           <input type="checkbox" id="favorites-only-toggle" />
           <span id="favorites-only-label">Favorites only</span>
@@ -441,6 +498,19 @@
     <div class="section">
       <div class="section-header">
         <h3 id="deployments-title">Active Deployments</h3>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label" id="deployment-status-filter-label">Deployment status:</span>
+        <select id="deployment-status-filter" class="status-filter" title="Filter deployments by status">
+          <option value="all">All statuses</option>
+        </select>
+        <input
+          id="deployment-app-filter"
+          class="text-filter"
+          type="text"
+          placeholder="Filter by application"
+          title="Filter deployments by application name"
+        />
       </div>
       <div id="deployments" class="cards-container">
         <div class="loading">
@@ -464,6 +534,7 @@
           loadingDeployments: 'Loading deployments...',
           noApplications: 'No applications found',
           noDeployments: 'No active deployments',
+          openInCoolify: 'Open',
           unknown: 'Unknown',
           noUrlConfigured: 'No URL configured',
           notAvailable: 'N/A',
@@ -487,6 +558,19 @@
           noContexts: 'No contexts',
           envs: 'Envs',
           addEnv: 'Add Env',
+          syncEnv: 'Sync .env',
+          envSyncStrategyLabel: 'Env sync:',
+          envSyncStrategyPrompt: 'Prompt',
+          envSyncStrategyFileAll: 'Use .env',
+          envSyncStrategyRemoteAll: 'Keep remote',
+          envSyncStrategyPerKey: 'Per key',
+          editEnv: 'Edit Env',
+          deleteEnv: 'Delete Env',
+          envPanelEmpty: 'No environment variables',
+          envPanelLoading: 'Loading env vars...',
+          deploymentStatusFilterLabel: 'Deployment status:',
+          deploymentStatusAll: 'All statuses',
+          deploymentAppFilterPlaceholder: 'Filter by application',
         },
         'pt-BR': {
           applicationsTitle: 'Aplicações',
@@ -498,6 +582,7 @@
           loadingDeployments: 'Carregando deployments...',
           noApplications: 'Nenhuma aplicação encontrada',
           noDeployments: 'Nenhum deployment ativo',
+          openInCoolify: 'Abrir',
           unknown: 'Desconhecido',
           noUrlConfigured: 'Sem URL configurada',
           notAvailable: 'N/D',
@@ -521,6 +606,19 @@
           noContexts: 'Sem contextos',
           envs: 'Envs',
           addEnv: 'Add Env',
+          syncEnv: 'Sync .env',
+          envSyncStrategyLabel: 'Sync env:',
+          envSyncStrategyPrompt: 'Perguntar',
+          envSyncStrategyFileAll: 'Usar .env',
+          envSyncStrategyRemoteAll: 'Manter remoto',
+          envSyncStrategyPerKey: 'Por chave',
+          editEnv: 'Editar Env',
+          deleteEnv: 'Remover Env',
+          envPanelEmpty: 'Nenhuma variável de ambiente',
+          envPanelLoading: 'Carregando env vars...',
+          deploymentStatusFilterLabel: 'Status do deployment:',
+          deploymentStatusAll: 'Todos os status',
+          deploymentAppFilterPlaceholder: 'Filtrar por aplicação',
         },
       };
 
@@ -539,6 +637,8 @@
           'loading-deployments': t('loadingDeployments'),
           'favorites-only-label': t('favoritesOnly'),
           'context-label': t('contextLabel'),
+          'env-sync-strategy-label': t('envSyncStrategyLabel'),
+          'deployment-status-filter-label': t('deploymentStatusFilterLabel'),
         };
 
         Object.entries(translationsMap).forEach(([id, value]) => {
@@ -554,20 +654,70 @@
         if (initialFilterOption) {
           initialFilterOption.textContent = t('filterAll');
         }
+
+        const deploymentStatusAllOption = document.querySelector(
+          '#deployment-status-filter option[value="all"]'
+        );
+        if (deploymentStatusAllOption) {
+          deploymentStatusAllOption.textContent = t('deploymentStatusAll');
+        }
+
+        const deploymentAppFilterInput = document.getElementById(
+          'deployment-app-filter'
+        );
+        if (deploymentAppFilterInput) {
+          deploymentAppFilterInput.placeholder = t(
+            'deploymentAppFilterPlaceholder'
+          );
+        }
+
+        const envSyncStrategySelect = document.getElementById(
+          'env-sync-strategy'
+        );
+        if (envSyncStrategySelect) {
+          const optionPrompt = envSyncStrategySelect.querySelector(
+            'option[value="prompt"]'
+          );
+          const optionFileAll = envSyncStrategySelect.querySelector(
+            'option[value="file-all"]'
+          );
+          const optionRemoteAll = envSyncStrategySelect.querySelector(
+            'option[value="remote-all"]'
+          );
+          const optionPerKey = envSyncStrategySelect.querySelector(
+            'option[value="per-key"]'
+          );
+
+          if (optionPrompt) optionPrompt.textContent = t('envSyncStrategyPrompt');
+          if (optionFileAll) optionFileAll.textContent = t('envSyncStrategyFileAll');
+          if (optionRemoteAll) optionRemoteAll.textContent = t('envSyncStrategyRemoteAll');
+          if (optionPerKey) optionPerKey.textContent = t('envSyncStrategyPerKey');
+        }
       }
 
       let isRefreshing = false;
       let selectedContainerStatus = 'all';
       let showFavoritesOnly = false;
       let favoriteApplicationIds = new Set();
+      const expandedEnvPanels = new Set();
+      const appEnvsByApplicationId = {};
+      const loadingEnvPanels = new Set();
       let availableContexts = [];
       let activeContextName = '';
+      let selectedDeploymentStatus = 'all';
+      let deploymentAppFilterText = '';
+      let envSyncConflictStrategy = 'prompt';
       let lastApplications = [];
       let lastDeployments = [];
       const refreshButton = document.getElementById('refresh-button');
       const statusFilter = document.getElementById('status-filter');
       const favoritesOnlyToggle = document.getElementById('favorites-only-toggle');
       const contextSelect = document.getElementById('context-select');
+      const deploymentStatusFilter = document.getElementById(
+        'deployment-status-filter'
+      );
+      const deploymentAppFilter = document.getElementById('deployment-app-filter');
+      const envSyncStrategy = document.getElementById('env-sync-strategy');
 
       applyStaticTranslations();
 
@@ -604,17 +754,68 @@
         });
       }
 
+      if (deploymentStatusFilter) {
+        deploymentStatusFilter.addEventListener('change', (event) => {
+          selectedDeploymentStatus = event.target.value;
+          renderDeployments(lastDeployments);
+          persistState();
+        });
+      }
+
+      if (deploymentAppFilter) {
+        deploymentAppFilter.addEventListener('input', (event) => {
+          deploymentAppFilterText = String(event.target.value || '').trim();
+          renderDeployments(lastDeployments);
+          persistState();
+        });
+      }
+
+      if (envSyncStrategy) {
+        envSyncStrategy.addEventListener('change', (event) => {
+          envSyncConflictStrategy = String(event.target.value || 'prompt');
+          vscode.postMessage({
+            type: 'set-env-sync-conflict-strategy',
+            conflictStrategy: envSyncConflictStrategy,
+          });
+          persistState();
+        });
+      }
+
       // Restore previous state
       const previousState = vscode.getState();
       if (previousState) {
         selectedContainerStatus = previousState.selectedContainerStatus || 'all';
         showFavoritesOnly = !!previousState.showFavoritesOnly;
         favoriteApplicationIds = new Set(previousState.favoriteApplicationIds || []);
+        (previousState.expandedEnvApplicationIds || []).forEach((applicationId) =>
+          expandedEnvPanels.add(applicationId)
+        );
+        Object.assign(
+          appEnvsByApplicationId,
+          previousState.appEnvsByApplicationId || {}
+        );
+        selectedDeploymentStatus =
+          previousState.selectedDeploymentStatus || 'all';
+        deploymentAppFilterText = previousState.deploymentAppFilterText || '';
+        envSyncConflictStrategy =
+          previousState.envSyncConflictStrategy || 'prompt';
         availableContexts = previousState.contextNames || [];
         activeContextName = previousState.activeContextName || '';
 
         if (favoritesOnlyToggle) {
           favoritesOnlyToggle.checked = showFavoritesOnly;
+        }
+
+        if (deploymentStatusFilter) {
+          deploymentStatusFilter.value = selectedDeploymentStatus;
+        }
+
+        if (deploymentAppFilter) {
+          deploymentAppFilter.value = deploymentAppFilterText;
+        }
+
+        if (envSyncStrategy) {
+          envSyncStrategy.value = envSyncConflictStrategy;
         }
 
         updateContextSelector(availableContexts, activeContextName);
@@ -636,7 +837,50 @@
           favoriteApplicationIds: Array.from(favoriteApplicationIds),
           contextNames: availableContexts,
           activeContextName,
+          expandedEnvApplicationIds: Array.from(expandedEnvPanels),
+          appEnvsByApplicationId,
+          selectedDeploymentStatus,
+          deploymentAppFilterText,
+          envSyncConflictStrategy,
         });
+      }
+
+      function normalizeDeploymentStatus(status) {
+        return String(status || 'unknown').toLowerCase();
+      }
+
+      function updateDeploymentFilterOptions(deployments) {
+        if (!deploymentStatusFilter) {
+          return;
+        }
+
+        const previousSelection = selectedDeploymentStatus;
+        const statuses = Array.from(
+          new Set(deployments.map((deployment) => normalizeDeploymentStatus(deployment.status)))
+        ).sort();
+
+        const options = [
+          { value: 'all', label: t('deploymentStatusAll') },
+          ...statuses.map((status) => ({
+            value: status,
+            label: normalizeFilterLabel(status),
+          })),
+        ];
+
+        const optionNodes = options.map((optionData) => {
+          const option = document.createElement('option');
+          option.value = optionData.value;
+          option.textContent = optionData.label;
+          return option;
+        });
+
+        deploymentStatusFilter.replaceChildren(...optionNodes);
+
+        const hasPrevious = options.some(
+          (option) => option.value === previousSelection
+        );
+        selectedDeploymentStatus = hasPrevious ? previousSelection : 'all';
+        deploymentStatusFilter.value = selectedDeploymentStatus;
       }
 
       function updateContextSelector(contextNames, selectedContextName) {
@@ -734,12 +978,61 @@
         vscode.postMessage({ type: 'cancel-deployment', deploymentId });
       }
 
+      function openExternalUrl(url) {
+        if (!url) {
+          return;
+        }
+
+        vscode.postMessage({ type: 'open-external-url', url });
+      }
+
       function listApplicationEnvs(applicationId) {
-        vscode.postMessage({ type: 'list-app-envs', applicationId });
+        if (expandedEnvPanels.has(applicationId)) {
+          expandedEnvPanels.delete(applicationId);
+          renderApplications(lastApplications);
+          persistState();
+          return;
+        }
+
+        expandedEnvPanels.add(applicationId);
+
+        if (!appEnvsByApplicationId[applicationId]) {
+          loadingEnvPanels.add(applicationId);
+          vscode.postMessage({ type: 'fetch-app-envs', applicationId });
+        }
+
+        renderApplications(lastApplications);
+        persistState();
       }
 
       function createApplicationEnv(applicationId) {
         vscode.postMessage({ type: 'create-app-env', applicationId });
+      }
+
+      function syncApplicationEnvs(applicationId) {
+        vscode.postMessage({
+          type: 'sync-app-envs',
+          applicationId,
+          conflictStrategy: envSyncConflictStrategy,
+        });
+      }
+
+      function updateApplicationEnv(applicationId, envUuid, envKey) {
+        vscode.postMessage({
+          type: 'update-app-env',
+          applicationId,
+          environmentVariableUuid: envUuid,
+          environmentVariableKey: envKey,
+        });
+      }
+
+      function deleteApplicationEnv(applicationId, envUuid, envKey) {
+        vscode.postMessage({
+          type: 'delete-app-env',
+          applicationId,
+          environmentVariableUuid: envUuid,
+          environmentVariableKey: envKey,
+        });
       }
 
       function formatDate(dateString) {
@@ -856,11 +1149,20 @@
               message.applications,
               message.deployments,
               message.contextNames,
-              message.activeContextName
+              message.activeContextName,
+              message.envSyncConflictStrategy
             );
             setRefreshing(false);
             break;
           case 'deployment-status':
+            break;
+          case 'app-envs-data':
+            appEnvsByApplicationId[message.applicationId] = Array.isArray(message.envs)
+              ? message.envs
+              : [];
+            loadingEnvPanels.delete(message.applicationId);
+            renderApplications(lastApplications);
+            persistState();
             break;
         }
       });
@@ -918,6 +1220,53 @@
 
         cardMain.appendChild(cardContent);
 
+        if (expandedEnvPanels.has(app.id)) {
+          const envPanel = createElement('div', 'env-panel');
+
+          if (loadingEnvPanels.has(app.id)) {
+            envPanel.appendChild(createElement('div', 'env-empty', t('envPanelLoading')));
+          } else {
+            const envs = appEnvsByApplicationId[app.id] || [];
+            if (envs.length === 0) {
+              envPanel.appendChild(createElement('div', 'env-empty', t('envPanelEmpty')));
+            } else {
+              envs.forEach((env) => {
+                const envRow = createElement('div', 'env-row');
+                envRow.appendChild(createElement('span', 'env-key', env.key));
+
+                const envActions = createElement('div', 'env-actions');
+
+                const editEnvButton = createElement(
+                  'button',
+                  'secondary-button',
+                  t('editEnv')
+                );
+                editEnvButton.type = 'button';
+                editEnvButton.addEventListener('click', () =>
+                  updateApplicationEnv(app.id, env.uuid, env.key)
+                );
+                envActions.appendChild(editEnvButton);
+
+                const deleteEnvButton = createElement(
+                  'button',
+                  'secondary-button',
+                  t('deleteEnv')
+                );
+                deleteEnvButton.type = 'button';
+                deleteEnvButton.addEventListener('click', () =>
+                  deleteApplicationEnv(app.id, env.uuid, env.key)
+                );
+                envActions.appendChild(deleteEnvButton);
+
+                envRow.appendChild(envActions);
+                envPanel.appendChild(envRow);
+              });
+            }
+          }
+
+          cardMain.appendChild(envPanel);
+        }
+
         const cardFooter = createElement('div', 'card-footer');
         const statusGroup = createElement('div', 'status-group');
         statusGroup.appendChild(
@@ -963,6 +1312,26 @@
         envsButton.type = 'button';
         envsButton.addEventListener('click', () => listApplicationEnvs(app.id));
         buttonGroup.appendChild(envsButton);
+
+        const syncEnvButton = createElement(
+          'button',
+          'secondary-button',
+          t('syncEnv')
+        );
+        syncEnvButton.type = 'button';
+        syncEnvButton.addEventListener('click', () => syncApplicationEnvs(app.id));
+        buttonGroup.appendChild(syncEnvButton);
+
+        if (app.externalUrl) {
+          const openButton = createElement(
+            'button',
+            'secondary-button',
+            t('openInCoolify')
+          );
+          openButton.type = 'button';
+          openButton.addEventListener('click', () => openExternalUrl(app.externalUrl));
+          buttonGroup.appendChild(openButton);
+        }
 
         const addEnvButton = createElement('button', 'secondary-button', t('addEnv'));
         addEnvButton.type = 'button';
@@ -1022,6 +1391,19 @@
         logsButton.addEventListener('click', () => showDeploymentLogs(deployment.id));
         buttonGroup.appendChild(logsButton);
 
+        if (deployment.externalUrl) {
+          const openButton = createElement(
+            'button',
+            'secondary-button',
+            t('openInCoolify')
+          );
+          openButton.type = 'button';
+          openButton.addEventListener('click', () =>
+            openExternalUrl(deployment.externalUrl)
+          );
+          buttonGroup.appendChild(openButton);
+        }
+
         const cancelButton = createElement(
           'button',
           'secondary-button',
@@ -1040,17 +1422,30 @@
         return card;
       }
 
-      function updateUI(applications, deployments, contextNames, activeContext) {
+      function updateUI(
+        applications,
+        deployments,
+        contextNames,
+        activeContext,
+        nextEnvSyncConflictStrategy
+      ) {
         if (!applications || !deployments) return;
 
         lastApplications = applications;
         lastDeployments = deployments;
         availableContexts = Array.isArray(contextNames) ? contextNames : availableContexts;
         activeContextName = activeContext || activeContextName;
+        envSyncConflictStrategy =
+          nextEnvSyncConflictStrategy || envSyncConflictStrategy;
+
+        if (envSyncStrategy) {
+          envSyncStrategy.value = envSyncConflictStrategy;
+        }
 
         updateContextSelector(availableContexts, activeContextName);
 
         updateStatusFilterOptions(lastApplications);
+        updateDeploymentFilterOptions(lastDeployments);
         renderApplications(lastApplications);
         renderDeployments(lastDeployments);
         persistState();
@@ -1085,11 +1480,27 @@
 
       function renderDeployments(deployments) {
         const deploymentsContainer = document.getElementById('deployments');
+        const normalizedAppFilterText = deploymentAppFilterText.toLowerCase();
+        const filteredDeployments = deployments.filter((deployment) => {
+          const matchesStatus =
+            selectedDeploymentStatus === 'all' ||
+            normalizeDeploymentStatus(deployment.status) ===
+              selectedDeploymentStatus;
+
+          const matchesApplication =
+            !normalizedAppFilterText ||
+            String(deployment.applicationName || '')
+              .toLowerCase()
+              .includes(normalizedAppFilterText);
+
+          return matchesStatus && matchesApplication;
+        });
+
         const deploymentNodes = [];
-        if (deployments.length === 0) {
+        if (filteredDeployments.length === 0) {
           deploymentNodes.push(createEmptyElement(t('noDeployments')));
         } else {
-          deployments.forEach((deployment) =>
+          filteredDeployments.forEach((deployment) =>
             deploymentNodes.push(createDeploymentCard(deployment))
           );
         }

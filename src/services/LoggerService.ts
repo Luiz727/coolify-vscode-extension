@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -11,10 +11,41 @@ const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
 
 export class LoggerService {
   private static instance: LoggerService;
-  private readonly outputChannel: vscode.OutputChannel;
+  private readonly outputChannel: {
+    appendLine(message: string): void;
+    show(preserveFocus?: boolean): void;
+  };
+  private readonly vscodeApi?: typeof vscode;
 
   private constructor() {
-    this.outputChannel = vscode.window.createOutputChannel('Coolify Extension');
+    this.vscodeApi = this.tryGetVscodeApi();
+
+    if (this.vscodeApi) {
+      this.outputChannel = this.vscodeApi.window.createOutputChannel(
+        'Coolify Extension'
+      );
+      return;
+    }
+
+    this.outputChannel = {
+      appendLine: (message: string) => {
+        console.log(message);
+      },
+      show: () => undefined,
+    };
+  }
+
+  private tryGetVscodeApi(): typeof vscode | undefined {
+    try {
+      const runtimeRequire = eval('require') as ((id: string) => unknown) | undefined;
+      if (!runtimeRequire) {
+        return undefined;
+      }
+
+      return runtimeRequire('vscode') as typeof vscode;
+    } catch {
+      return undefined;
+    }
   }
 
   static getInstance(): LoggerService {
@@ -67,9 +98,9 @@ export class LoggerService {
   }
 
   private shouldLog(level: LogLevel): boolean {
-    const configured = vscode.workspace
+    const configured = this.vscodeApi?.workspace
       .getConfiguration('coolify')
-      .get<LogLevel>('logLevel', 'info');
+      .get<LogLevel>('logLevel', 'info') ?? 'info';
 
     return LOG_LEVEL_ORDER[level] >= LOG_LEVEL_ORDER[configured];
   }

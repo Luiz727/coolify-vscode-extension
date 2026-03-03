@@ -1,7 +1,7 @@
 import { CoolifyApiError, HttpClient } from './HttpClient';
 import { logger } from './LoggerService';
 
-interface Application {
+export interface Application {
   uuid: string;
   name: string;
   status: string;
@@ -14,7 +14,7 @@ interface Application {
   description: string;
 }
 
-interface Deployment {
+export interface Deployment {
   id: string;
   deployment_uuid?: string;
   application_id: string;
@@ -27,7 +27,7 @@ interface Deployment {
   logs?: string;
 }
 
-interface ApplicationLifecycleResponse {
+export interface ApplicationLifecycleResponse {
   message?: string;
   deployment_uuid?: string;
 }

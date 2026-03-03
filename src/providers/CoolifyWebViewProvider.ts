@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { CoolifyApiError, CoolifyService } from '../services/CoolifyService';
 import type {
+  Application as CoolifyApplication,
+  Deployment as CoolifyDeployment,
   EnvironmentVariable,
   EnvironmentVariableCreateRequest,
   EnvironmentVariableUpdateRequest,
@@ -20,13 +22,17 @@ interface WebViewState {
   deployments: Deployment[];
   contextNames: string[];
   activeContextName: string;
+  envSyncConflictStrategy: EnvSyncConflictStrategy;
 }
+
+type EnvSyncConflictStrategy = 'prompt' | 'file-all' | 'remote-all' | 'per-key';
 
 interface Application {
   id: string;
   name: string;
   status: string;
   fqdn: string;
+  externalUrl?: string;
   git_repository: string;
   git_branch: string;
   updated_at: string;
@@ -39,6 +45,7 @@ interface Deployment {
   status: string;
   commit: string;
   startedAt: string;
+  externalUrl?: string;
 }
 
 interface DeploymentListItem {
@@ -54,6 +61,13 @@ interface DeploymentListItem {
   logs?: string;
 }
 
+interface ApplicationListItem {
+  id: string;
+  name: string;
+  status: string;
+  label: string;
+}
+
 interface WebViewMessage {
   type:
     | 'refresh'
@@ -66,12 +80,22 @@ interface WebViewMessage {
     | 'cancel-deployment'
     | 'list-app-envs'
     | 'create-app-env'
+    | 'update-app-env'
+    | 'delete-app-env'
+    | 'fetch-app-envs'
+    | 'sync-app-envs'
+    | 'set-env-sync-conflict-strategy'
+    | 'open-external-url'
     | 'switch-context'
     | 'configure'
     | 'reconfigure';
   applicationId?: string;
   deploymentId?: string;
   contextName?: string;
+  environmentVariableUuid?: string;
+  environmentVariableKey?: string;
+  conflictStrategy?: EnvSyncConflictStrategy;
+  url?: string;
 }
 
 interface RefreshDataMessage {
@@ -80,6 +104,7 @@ interface RefreshDataMessage {
   deployments: Deployment[];
   contextNames: string[];
   activeContextName: string;
+  envSyncConflictStrategy: EnvSyncConflictStrategy;
 }
 
 interface DeploymentStatusMessage {
@@ -88,7 +113,20 @@ interface DeploymentStatusMessage {
   applicationId: string;
 }
 
-type WebViewOutgoingMessage = RefreshDataMessage | DeploymentStatusMessage;
+interface AppEnvironmentVariablesMessage {
+  type: 'app-envs-data';
+  applicationId: string;
+  envs: Array<{
+    uuid: string;
+    key: string;
+    value: string;
+  }>;
+}
+
+type WebViewOutgoingMessage =
+  | RefreshDataMessage
+  | DeploymentStatusMessage
+  | AppEnvironmentVariablesMessage;
 type CoolifyLanguage = 'en' | 'pt-BR';
 
 // Constants
@@ -251,6 +289,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         const token = await this.configManager.getToken();
         const contextNames = await this.configManager.getContextNames();
         const activeContextName = await this.configManager.getActiveContextName();
+        const envSyncConflictStrategy = vscode.workspace
+          .getConfiguration('coolify')
+          .get<EnvSyncConflictStrategy>('envSyncConflictStrategy', 'prompt');
 
         if (!serverUrl || !token) {
           await this.handleUnconfiguredState();
@@ -267,7 +308,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           applications,
           deployments,
           contextNames,
-          activeContextName
+          activeContextName,
+          serverUrl,
+          envSyncConflictStrategy
         );
       });
     } catch (error) {
@@ -284,16 +327,18 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async updateWebViewState(
-    applications: any[],
-    deployments: any[],
+    applications: CoolifyApplication[],
+    deployments: CoolifyDeployment[],
     contextNames: string[],
-    activeContextName: string
+    activeContextName: string,
+    serverUrl: string,
+    envSyncConflictStrategy: EnvSyncConflictStrategy
   ): Promise<void> {
     if (!this.isViewValid()) {
       return;
     }
 
-    const uiApplications = this.mapApplicationsToUI(applications);
+    const uiApplications = this.mapApplicationsToUI(applications, serverUrl);
     const uiDeployments = this.mapDeploymentsToUI(deployments);
 
     this._view!.webview.postMessage({
@@ -302,22 +347,29 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       deployments: uiDeployments,
       contextNames,
       activeContextName,
+      envSyncConflictStrategy,
     } as WebViewOutgoingMessage);
   }
 
-  private mapApplicationsToUI(applications: any[]): Application[] {
+  private mapApplicationsToUI(
+    applications: CoolifyApplication[],
+    serverUrl: string
+  ): Application[] {
     return applications.map((app) => ({
       id: app.uuid,
       name: app.name,
       status: app.status,
       fqdn: app.fqdn,
+      externalUrl:
+        this.normalizeExternalUrl(app.fqdn) ||
+        this.normalizeExternalUrl(`${serverUrl}/resources/${app.uuid}`),
       git_repository: app.git_repository,
       git_branch: app.git_branch,
       updated_at: app.updated_at,
     }));
   }
 
-  private mapDeploymentsToUI(deployments: any[]): Deployment[] {
+  private mapDeploymentsToUI(deployments: CoolifyDeployment[]): Deployment[] {
     return deployments.map((d) => ({
       id: d.id,
       applicationId: d.application_id,
@@ -327,7 +379,53 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         d.commit_message ||
         `Deploying ${d.commit?.slice(0, 7) || 'latest'} commit`,
       startedAt: new Date(d.created_at).toLocaleString(),
+      externalUrl: this.normalizeExternalUrl(d.deployment_url),
     }));
+  }
+
+  private mapDeploymentToListItem(deployment: CoolifyDeployment): DeploymentListItem {
+    return {
+      id: deployment.deployment_uuid || deployment.id,
+      deploymentUuid: deployment.deployment_uuid,
+      applicationId: deployment.application_id,
+      applicationName: deployment.application_name,
+      status: deployment.status,
+      commit: deployment.commit,
+      createdAt: deployment.created_at,
+      deploymentUrl: deployment.deployment_url,
+      commitMessage: deployment.commit_message,
+      logs: deployment.logs,
+    };
+  }
+
+  private toTimestamp(value: string): number {
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
+  private normalizeExternalUrl(rawUrl: string | undefined): string | undefined {
+    if (!rawUrl) {
+      return undefined;
+    }
+
+    const trimmed = String(rawUrl).trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const withScheme = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
+
+    try {
+      const parsed = new URL(withScheme);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return undefined;
+      }
+      return parsed.toString();
+    } catch {
+      return undefined;
+    }
   }
 
   // Deployment Management
@@ -556,12 +654,135 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
             'coolify.createEnvironmentVariable',
             message.applicationId
           );
+          if (this.isViewValid()) {
+            const envs = await this.listEnvironmentVariables(message.applicationId);
+            this._view!.webview.postMessage({
+              type: 'app-envs-data',
+              applicationId: message.applicationId,
+              envs: envs.map((env) => ({
+                uuid: env.uuid,
+                key: env.key,
+                value: env.value,
+              })),
+            } as WebViewOutgoingMessage);
+          }
+        }
+        break;
+      case 'sync-app-envs':
+        if (message.applicationId) {
+          await vscode.commands.executeCommand(
+            'coolify.syncEnvironmentVariablesFromFile',
+            {
+              applicationId: message.applicationId,
+              conflictStrategy: message.conflictStrategy,
+            }
+          );
+          if (this.isViewValid()) {
+            const envs = await this.listEnvironmentVariables(message.applicationId);
+            this._view!.webview.postMessage({
+              type: 'app-envs-data',
+              applicationId: message.applicationId,
+              envs: envs.map((env) => ({
+                uuid: env.uuid,
+                key: env.key,
+                value: env.value,
+              })),
+            } as WebViewOutgoingMessage);
+          }
+        }
+        break;
+      case 'set-env-sync-conflict-strategy':
+        if (message.conflictStrategy) {
+          await vscode.workspace
+            .getConfiguration('coolify')
+            .update(
+              'envSyncConflictStrategy',
+              message.conflictStrategy,
+              vscode.ConfigurationTarget.Global
+            );
+
+          await this.refreshData();
+        }
+        break;
+      case 'update-app-env':
+        if (message.applicationId) {
+          await vscode.commands.executeCommand(
+            'coolify.updateEnvironmentVariable',
+            {
+              applicationId: message.applicationId,
+              environmentVariableUuid: message.environmentVariableUuid,
+              environmentVariableKey: message.environmentVariableKey,
+            }
+          );
+          if (this.isViewValid()) {
+            const envs = await this.listEnvironmentVariables(message.applicationId);
+            this._view!.webview.postMessage({
+              type: 'app-envs-data',
+              applicationId: message.applicationId,
+              envs: envs.map((env) => ({
+                uuid: env.uuid,
+                key: env.key,
+                value: env.value,
+              })),
+            } as WebViewOutgoingMessage);
+          }
+        }
+        break;
+      case 'delete-app-env':
+        if (message.applicationId) {
+          await vscode.commands.executeCommand(
+            'coolify.deleteEnvironmentVariable',
+            {
+              applicationId: message.applicationId,
+              environmentVariableUuid: message.environmentVariableUuid,
+              environmentVariableKey: message.environmentVariableKey,
+            }
+          );
+          if (this.isViewValid()) {
+            const envs = await this.listEnvironmentVariables(message.applicationId);
+            this._view!.webview.postMessage({
+              type: 'app-envs-data',
+              applicationId: message.applicationId,
+              envs: envs.map((env) => ({
+                uuid: env.uuid,
+                key: env.key,
+                value: env.value,
+              })),
+            } as WebViewOutgoingMessage);
+          }
+        }
+        break;
+      case 'fetch-app-envs':
+        if (message.applicationId && this.isViewValid()) {
+          const envs = await this.listEnvironmentVariables(message.applicationId);
+          this._view!.webview.postMessage({
+            type: 'app-envs-data',
+            applicationId: message.applicationId,
+            envs: envs.map((env) => ({
+              uuid: env.uuid,
+              key: env.key,
+              value: env.value,
+            })),
+          } as WebViewOutgoingMessage);
+        }
+        break;
+      case 'open-external-url':
+        if (message.url) {
+          const normalizedUrl = this.normalizeExternalUrl(message.url);
+          if (!normalizedUrl) {
+            vscode.window.showErrorMessage('Invalid URL to open.');
+            break;
+          }
+
+          await vscode.env.openExternal(vscode.Uri.parse(normalizedUrl));
         }
         break;
       case 'switch-context':
         if (message.contextName) {
-          await this.configManager.setActiveContext(message.contextName);
-          await this.updateView();
+          await vscode.commands.executeCommand(
+            'coolify.switchContext',
+            message.contextName
+          );
         }
         break;
       case 'configure':
@@ -726,7 +947,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     throw error;
   }
 
-  public async getApplications() {
+  public async getApplications(): Promise<ApplicationListItem[]> {
     try {
       const serverUrl = await this.configManager.getServerUrl();
       const token = await this.configManager.getToken();
@@ -763,21 +984,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       const deployments = await service.getDeployments();
 
       return deployments
-        .map((deployment) => ({
-          id: deployment.deployment_uuid || deployment.id,
-          deploymentUuid: deployment.deployment_uuid,
-          applicationId: deployment.application_id,
-          applicationName: deployment.application_name,
-          status: deployment.status,
-          commit: deployment.commit,
-          createdAt: deployment.created_at,
-          deploymentUrl: deployment.deployment_url,
-          commitMessage: deployment.commit_message,
-        }))
-        .sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
+        .map((deployment) => this.mapDeploymentToListItem(deployment))
+        .sort((a, b) => this.toTimestamp(b.createdAt) - this.toTimestamp(a.createdAt));
     } catch (error) {
       logger.error('Failed to get deployments', error);
       throw error;
@@ -798,18 +1006,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       const service = new CoolifyService(serverUrl, token);
       const deployment = await service.getDeployment(deploymentId);
 
-      return {
-        id: deployment.deployment_uuid || deployment.id,
-        deploymentUuid: deployment.deployment_uuid,
-        applicationId: deployment.application_id,
-        applicationName: deployment.application_name,
-        status: deployment.status,
-        commit: deployment.commit,
-        createdAt: deployment.created_at,
-        deploymentUrl: deployment.deployment_url,
-        commitMessage: deployment.commit_message,
-        logs: deployment.logs,
-      };
+      return this.mapDeploymentToListItem(deployment);
     } catch (error) {
       logger.warn('Failed to get deployment details from details endpoint', {
         deploymentId,

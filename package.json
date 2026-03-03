@@ -31,11 +31,13 @@
     "onCommand:coolify.stopApplication",
     "onCommand:coolify.restartApplication",
     "onCommand:coolify.selectLanguage",
+    "onCommand:coolify.setEnvSyncConflictStrategy",
     "onCommand:coolify.showLogs",
     "onCommand:coolify.listEnvironmentVariables",
     "onCommand:coolify.createEnvironmentVariable",
     "onCommand:coolify.updateEnvironmentVariable",
     "onCommand:coolify.deleteEnvironmentVariable",
+    "onCommand:coolify.syncEnvironmentVariablesFromFile",
     "onCommand:coolify.listDeployments",
     "onCommand:coolify.showDeploymentDetails",
     "onCommand:coolify.cancelDeployment",
@@ -80,6 +82,23 @@
             "Errors only."
           ],
           "description": "Controls how much the Coolify output channel logs."
+        },
+        "coolify.envSyncConflictStrategy": {
+          "type": "string",
+          "default": "prompt",
+          "enum": [
+            "prompt",
+            "file-all",
+            "remote-all",
+            "per-key"
+          ],
+          "enumDescriptions": [
+            "Ask which strategy to use whenever conflicts are found.",
+            "Always apply values from .env for conflicting keys.",
+            "Always keep remote values for conflicting keys.",
+            "Always resolve conflicts key by key."
+          ],
+          "description": "Default strategy to resolve environment variable conflicts during .env sync."
         }
       }
     },
@@ -161,6 +180,10 @@
         "title": "Coolify: Select Language"
       },
       {
+        "command": "coolify.setEnvSyncConflictStrategy",
+        "title": "Coolify: Set Env Sync Conflict Strategy"
+      },
+      {
         "command": "coolify.showLogs",
         "title": "Coolify: Show Logs"
       },
@@ -179,6 +202,10 @@
       {
         "command": "coolify.deleteEnvironmentVariable",
         "title": "Coolify: Delete Environment Variable"
+      },
+      {
+        "command": "coolify.syncEnvironmentVariablesFromFile",
+        "title": "Coolify: Sync Environment Variables from .env"
       },
       {
         "command": "coolify.listDeployments",
@@ -210,6 +237,7 @@
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
+    "test:coverage": "pnpm run compile-tests && pnpm dlx c8 --reporter=text --reporter=lcov --check-coverage --lines 35 --functions 35 --branches 20 --statements 35 pnpm dlx mocha --ui tdd \"out/test/**/*.test.js\" --exclude \"out/test/extension.test.js\"",
     "test": "vscode-test"
   },
   "devDependencies": {
