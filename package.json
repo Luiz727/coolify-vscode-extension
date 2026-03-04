@@ -38,6 +38,8 @@
     "onCommand:coolify.switchContext",
     "onCommand:coolify.deleteContext",
     "onCommand:coolify.refreshApplications",
+    "onCommand:coolify.sidebarLoadingIndicator",
+    "onCommand:coolify.sidebarErrorIndicator",
     "onCommand:coolify.startDeployment",
     "onCommand:coolify.startApplication",
     "onCommand:coolify.stopApplication",
@@ -438,8 +440,18 @@
     "menus": {
       "view/title": [
         {
-          "command": "coolify.reconfigure",
-          "when": "view == coolify-deployments && coolify.isConfigured",
+          "command": "coolify.refreshApplications",
+          "when": "view == coolify-deployments && coolify.viewState == ready",
+          "group": "navigation"
+        },
+        {
+          "command": "coolify.sidebarLoadingIndicator",
+          "when": "view == coolify-deployments && coolify.viewState == loading",
+          "group": "navigation"
+        },
+        {
+          "command": "coolify.sidebarErrorIndicator",
+          "when": "view == coolify-deployments && coolify.viewState == error",
           "group": "navigation"
         }
       ]
@@ -472,6 +484,18 @@
         "command": "coolify.refreshApplications",
         "title": "Coolify: Refresh Applications",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "coolify.sidebarLoadingIndicator",
+        "title": "Coolify: Loading",
+        "icon": "$(sync~spin)",
+        "enablement": "coolify.isConfigured"
+      },
+      {
+        "command": "coolify.sidebarErrorIndicator",
+        "title": "Coolify: Last Refresh Failed (Click to Retry)",
+        "icon": "$(warning)",
+        "enablement": "coolify.isConfigured"
       },
       {
         "command": "coolify.startDeployment",

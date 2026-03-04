@@ -122,6 +122,7 @@ interface WebViewMessage {
     | 'restart-database'
     | 'show-deployment-details'
     | 'show-deployment-logs'
+    | 'fetch-deployment-logs'
     | 'cancel-deployment'
     | 'list-app-envs'
     | 'create-app-env'
@@ -228,6 +229,12 @@ interface ProjectDetailsMessage {
   }>;
 }
 
+interface DeploymentLogsMessage {
+  type: 'deployment-logs-data';
+  deploymentId: string;
+  logs: string;
+}
+
 type WebViewOutgoingMessage =
   | RefreshDataMessage
   | DeploymentStatusMessage
@@ -236,6 +243,7 @@ type WebViewOutgoingMessage =
   | DatabaseDetailsMessage
   | DatabaseBackupsMessage
   | ProjectDetailsMessage
+  | DeploymentLogsMessage
   | UiStateMessage;
 type CoolifyLanguage = 'en' | 'pt-BR';
 
@@ -247,6 +255,7 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 };
 
 const REFRESH_INTERVAL = 5000;
+const FAILED_DEPLOYMENT_RETENTION_MS = 30 * 60 * 1000;
 
 export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
@@ -258,6 +267,11 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   private pendingRefresh?: NodeJS.Timeout;
   private disposables: vscode.Disposable[] = [];
   private currentUiState: UiState = 'loading';
+  private lastRefreshErrorMessage = '';
+  private recentFailedDeployments = new Map<
+    string,
+    { deployment: Deployment; recordedAt: number }
+  >();
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -394,6 +408,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    this.lastRefreshErrorMessage = '';
+
     await this.transitionUiState('loading');
 
     try {
@@ -460,6 +476,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleUnconfiguredState(): Promise<void> {
+    this.recentFailedDeployments.clear();
+
     await this.transitionUiState(
       'unconfigured',
       'Coolify is not configured. Please configure the extension.'
@@ -519,6 +537,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
     const uiApplications = this.mapApplicationsToUI(validApplications, serverUrl);
     const uiDeployments = this.mapDeploymentsToUI(validDeployments);
+    const deploymentsWithRecentFailures =
+      this.mergeDeploymentsWithRecentFailures(uiDeployments);
     const uiServices = this.mapServicesToUI(services);
     const uiDatabases = this.mapDatabasesToUI(databases);
     const uiProjects = this.mapProjectsToUI(projects);
@@ -526,7 +546,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     this._view!.webview.postMessage({
       type: 'refresh-data',
       applications: uiApplications,
-      deployments: uiDeployments,
+      deployments: deploymentsWithRecentFailures,
       services: uiServices,
       databases: uiDatabases,
       projects: uiProjects,
@@ -535,7 +555,13 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       envSyncConflictStrategy,
     } as WebViewOutgoingMessage);
 
+    this.lastRefreshErrorMessage = '';
+
     await this.transitionUiState('ready');
+  }
+
+  public getLastRefreshErrorMessage(): string {
+    return this.lastRefreshErrorMessage;
   }
 
   private async transitionUiState(
@@ -552,6 +578,11 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }
 
     this.currentUiState = nextState;
+    await vscode.commands.executeCommand(
+      'setContext',
+      'coolify.viewState',
+      nextState
+    );
 
     if (this.isViewValid()) {
       this._view!.webview.postMessage({
@@ -600,6 +631,61 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         : '',
       externalUrl: this.normalizeExternalUrl(d.deployment_url),
     }));
+  }
+
+  private normalizeDeploymentStatus(status: string): string {
+    return sanitizeDisplayTextOrFallback(status, 'unknown').toLowerCase();
+  }
+
+  private isFailedDeploymentStatus(status: string): boolean {
+    const normalizedStatus = this.normalizeDeploymentStatus(status);
+    return (
+      normalizedStatus.includes('fail') ||
+      normalizedStatus.includes('error') ||
+      normalizedStatus.includes('crash')
+    );
+  }
+
+  private trackRecentFailedDeployments(deployments: Deployment[]): void {
+    const now = Date.now();
+    const currentDeploymentsById = new Map(
+      deployments.map((deployment) => [deployment.id, deployment])
+    );
+
+    for (const deployment of deployments) {
+      if (this.isFailedDeploymentStatus(deployment.status)) {
+        this.recentFailedDeployments.set(deployment.id, {
+          deployment,
+          recordedAt: now,
+        });
+      }
+    }
+
+    for (const [deploymentId, cached] of this.recentFailedDeployments.entries()) {
+      const isExpired = now - cached.recordedAt > FAILED_DEPLOYMENT_RETENTION_MS;
+      const currentDeployment = currentDeploymentsById.get(deploymentId);
+      const noLongerFailed =
+        !!currentDeployment &&
+        !this.isFailedDeploymentStatus(currentDeployment.status);
+
+      if (isExpired || noLongerFailed) {
+        this.recentFailedDeployments.delete(deploymentId);
+      }
+    }
+  }
+
+  private mergeDeploymentsWithRecentFailures(
+    deployments: Deployment[]
+  ): Deployment[] {
+    this.trackRecentFailedDeployments(deployments);
+
+    const currentIds = new Set(deployments.map((deployment) => deployment.id));
+    const cachedFailures = Array.from(this.recentFailedDeployments.values())
+      .filter((item) => !currentIds.has(item.deployment.id))
+      .sort((a, b) => b.recordedAt - a.recordedAt)
+      .map((item) => item.deployment);
+
+    return [...cachedFailures, ...deployments];
   }
 
   private mapServicesToUI(services: ServiceResource[]): ServiceListItem[] {
@@ -1010,6 +1096,25 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           });
         }
         break;
+      case 'fetch-deployment-logs':
+        if (message.deploymentId && this.isViewValid()) {
+          let logs = '';
+          try {
+            logs = await this.getDeploymentLogs(message.deploymentId);
+          } catch (error) {
+            logger.warn('Failed to fetch deployment logs for sidebar panel', {
+              deploymentId: message.deploymentId,
+              error,
+            });
+          }
+
+          this._view!.webview.postMessage({
+            type: 'deployment-logs-data',
+            deploymentId: message.deploymentId,
+            logs,
+          } as WebViewOutgoingMessage);
+        }
+        break;
       case 'cancel-deployment':
         if (message.deploymentId) {
           const confirmation = await vscode.window.showWarningMessage(
@@ -1281,6 +1386,11 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     webviewView: vscode.WebviewView
   ): Promise<void> {
     this.currentUiState = 'unconfigured';
+    await vscode.commands.executeCommand(
+      'setContext',
+      'coolify.viewState',
+      'unconfigured'
+    );
     this.stopRefreshInterval();
     if (this.isViewValid()) {
       webviewView.webview.html = await this.getWelcomeHtml();
@@ -1291,6 +1401,11 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     webviewView: vscode.WebviewView
   ): Promise<void> {
     this.currentUiState = 'loading';
+    await vscode.commands.executeCommand(
+      'setContext',
+      'coolify.viewState',
+      'loading'
+    );
     if (this.isViewValid()) {
       webviewView.webview.html = await this.getWebViewHtml();
       if (webviewView.visible) {
@@ -1380,6 +1495,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleAuthenticationError(): Promise<void> {
+    this.lastRefreshErrorMessage =
+      'Authentication failed. Please reconfigure the extension.';
+
     await this.configManager.clearConfiguration();
     await vscode.commands.executeCommand(
       'setContext',
@@ -1406,6 +1524,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         error instanceof CoolifyApiError
           ? error.message
           : 'Failed to refresh data. Please try again.';
+
+      this.lastRefreshErrorMessage = errorMessage;
 
       await this.transitionUiState('error', errorMessage);
 
@@ -1820,7 +1940,32 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }
 
     const service = new CoolifyService(serverUrl, token);
-    return service.getDeploymentLogs(deploymentId);
+    try {
+      return await service.getDeploymentLogs(deploymentId);
+    } catch (error) {
+      logger.warn('Primary deployment logs lookup failed, trying fallback identifier', {
+        deploymentId,
+        error,
+      });
+
+      const deployments = await service.getDeployments();
+      const match = deployments.find(
+        (deployment) =>
+          String(deployment.id) === deploymentId ||
+          String(deployment.deployment_uuid || '') === deploymentId
+      );
+
+      const fallbackId =
+        match?.deployment_uuid && String(match.deployment_uuid) !== deploymentId
+          ? String(match.deployment_uuid)
+          : undefined;
+
+      if (!fallbackId) {
+        throw error;
+      }
+
+      return service.getDeploymentLogs(fallbackId);
+    }
   }
 
   public async cancelDeployment(deploymentId: string): Promise<void> {

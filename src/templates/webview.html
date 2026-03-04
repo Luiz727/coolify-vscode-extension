@@ -458,6 +458,28 @@
         color: var(--vscode-descriptionForeground);
       }
 
+      .deployment-log-panel {
+        border-top: 1px dashed var(--vscode-widget-border);
+        padding-top: 10px;
+        margin-top: 2px;
+      }
+
+      .deployment-log-content {
+        margin: 0;
+        padding: 10px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: var(--control-radius);
+        background: var(--vscode-editor-background);
+        color: var(--vscode-editor-foreground);
+        font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+        font-size: 11px;
+        line-height: 1.4;
+        max-height: 240px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
       .loading {
         display: flex;
         align-items: center;
@@ -476,16 +498,15 @@
         animation: spin 1s linear infinite;
       }
       .ui-state-banner {
-        min-height: 34px;
+        display: none;
         box-sizing: border-box;
         padding: 8px 10px;
         border-radius: var(--control-radius);
         border: 1px solid transparent;
         font-size: 12px;
-        visibility: hidden;
       }
       .ui-state-banner.visible {
-        visibility: visible;
+        display: block;
       }
       .ui-state-loading {
         background: var(--vscode-editorInfo-background);
@@ -605,9 +626,6 @@
             aria-expanded="true"
           >
             ▾
-          </button>
-          <button class="refresh-button" id="refresh-button" type="button">
-            <span id="refresh-label">↻ Force Refresh</span>
           </button>
         </div>
       </div>
@@ -803,6 +821,7 @@
           deploy: 'Deploy',
           details: 'Details',
           logs: 'Logs',
+          hideLogs: 'Hide logs',
           cancel: 'Cancel',
           started: 'Started',
           noCommitDetails: 'No commit details',
@@ -835,6 +854,8 @@
           backupEmpty: 'No backups found',
           backupCreatedAt: 'Created:',
           backupSize: 'Size:',
+          deploymentLogsLoading: 'Loading deployment logs...',
+          deploymentLogsEmpty: 'No logs available for this deployment.',
           deploymentStatusFilterLabel: 'Deployment status:',
           deploymentStatusAll: 'All statuses',
           deploymentAppFilterPlaceholder: 'Filter by application',
@@ -880,6 +901,7 @@
           deploy: 'Deploy',
           details: 'Detalhes',
           logs: 'Logs',
+          hideLogs: 'Ocultar logs',
           cancel: 'Cancelar',
           started: 'Iniciado',
           noCommitDetails: 'Sem detalhes de commit',
@@ -912,6 +934,8 @@
           backupEmpty: 'Nenhum backup encontrado',
           backupCreatedAt: 'Criado em:',
           backupSize: 'Tamanho:',
+          deploymentLogsLoading: 'Carregando logs do deployment...',
+          deploymentLogsEmpty: 'Sem logs disponíveis para este deployment.',
           deploymentStatusFilterLabel: 'Status do deployment:',
           deploymentStatusAll: 'Todos os status',
           deploymentAppFilterPlaceholder: 'Filtrar por aplicação',
@@ -1030,6 +1054,9 @@
       const expandedProjectPanels = new Set();
       const projectDetailsById = {};
       const loadingProjectPanels = new Set();
+      const expandedDeploymentLogPanels = new Set();
+      const deploymentLogsById = {};
+      const loadingDeploymentLogPanels = new Set();
       let availableContexts = [];
       let activeContextName = '';
       let selectedDeploymentStatus = 'all';
@@ -1228,6 +1255,13 @@
           projectDetailsById,
           previousState.projectDetailsById || {}
         );
+        (previousState.expandedDeploymentLogIds || []).forEach((deploymentId) =>
+          expandedDeploymentLogPanels.add(deploymentId)
+        );
+        Object.assign(
+          deploymentLogsById,
+          previousState.deploymentLogsById || {}
+        );
         selectedDeploymentStatus =
           previousState.selectedDeploymentStatus || 'all';
         deploymentAppFilterText = previousState.deploymentAppFilterText || '';
@@ -1299,6 +1333,8 @@
           databaseBackupsById,
           expandedProjectIds: Array.from(expandedProjectPanels),
           projectDetailsById,
+          expandedDeploymentLogIds: Array.from(expandedDeploymentLogPanels),
+          deploymentLogsById,
           selectedDeploymentStatus,
           deploymentAppFilterText,
           envSyncConflictStrategy,
@@ -1508,11 +1544,13 @@
           return;
         }
 
-        let defaultMessage = '';
         if (currentUiState === 'loading') {
-          defaultMessage = t('uiStateLoading');
-          banner.classList.add('ui-state-loading');
-        } else if (currentUiState === 'error') {
+          banner.textContent = '';
+          return;
+        }
+
+        let defaultMessage = '';
+        if (currentUiState === 'error') {
           defaultMessage = t('uiStateError');
           banner.classList.add('ui-state-error');
         } else if (currentUiState === 'unconfigured') {
@@ -1655,7 +1693,21 @@
       }
 
       function showDeploymentLogs(deploymentId) {
-        vscode.postMessage({ type: 'show-deployment-logs', deploymentId });
+        if (expandedDeploymentLogPanels.has(deploymentId)) {
+          expandedDeploymentLogPanels.delete(deploymentId);
+          renderDeployments(lastDeployments);
+          persistState();
+          return;
+        }
+
+        expandedDeploymentLogPanels.add(deploymentId);
+        if (typeof deploymentLogsById[deploymentId] !== 'string') {
+          loadingDeploymentLogPanels.add(deploymentId);
+          vscode.postMessage({ type: 'fetch-deployment-logs', deploymentId });
+        }
+
+        renderDeployments(lastDeployments);
+        persistState();
       }
 
       function cancelDeployment(deploymentId) {
@@ -1889,6 +1941,13 @@
             renderProjects(lastProjects);
             persistState();
             break;
+          case 'deployment-logs-data':
+            deploymentLogsById[message.deploymentId] =
+              typeof message.logs === 'string' ? message.logs : '';
+            loadingDeploymentLogPanels.delete(message.deploymentId);
+            renderDeployments(lastDeployments);
+            persistState();
+            break;
         }
       });
 
@@ -2088,6 +2147,29 @@
           createElement('div', 'commit-message', deployment.commit || t('noCommitDetails'))
         );
 
+        if (expandedDeploymentLogPanels.has(deployment.id)) {
+          const logsPanel = createElement('div', 'deployment-log-panel');
+
+          if (loadingDeploymentLogPanels.has(deployment.id)) {
+            logsPanel.appendChild(
+              createElement('div', 'env-empty', t('deploymentLogsLoading'))
+            );
+          } else {
+            const logsValue = deploymentLogsById[deployment.id] || '';
+            if (!String(logsValue).trim()) {
+              logsPanel.appendChild(
+                createElement('div', 'env-empty', t('deploymentLogsEmpty'))
+              );
+            } else {
+              const logsContent = createElement('pre', 'deployment-log-content');
+              logsContent.textContent = String(logsValue);
+              logsPanel.appendChild(logsContent);
+            }
+          }
+
+          cardMain.appendChild(logsPanel);
+        }
+
         const cardFooter = createElement('div', 'card-footer');
         const deploymentStatusClass = getDeploymentStatusClass(deployment.status);
         cardFooter.appendChild(
@@ -2111,7 +2193,10 @@
         );
         buttonGroup.appendChild(detailsButton);
 
-        const logsButton = createElement('button', 'secondary-button', t('logs'));
+        const logsButtonLabel = expandedDeploymentLogPanels.has(deployment.id)
+          ? t('hideLogs')
+          : t('logs');
+        const logsButton = createElement('button', 'secondary-button', logsButtonLabel);
         logsButton.type = 'button';
         logsButton.addEventListener('click', () => showDeploymentLogs(deployment.id));
         buttonGroup.appendChild(logsButton);

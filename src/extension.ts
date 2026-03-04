@@ -64,6 +64,11 @@ export function activate(context: vscode.ExtensionContext) {
       'coolify.isConfigured',
       isConfigured
     );
+    await vscode.commands.executeCommand(
+      'setContext',
+      'coolify.viewState',
+      isConfigured ? 'loading' : 'unconfigured'
+    );
 
     // Update the webview if it exists
     webviewProvider?.updateView();
@@ -318,6 +323,28 @@ export function activate(context: vscode.ExtensionContext) {
     'coolify.refreshApplications',
     async () => {
       if (webviewProvider) {
+        await webviewProvider.refreshData();
+      }
+    }
+  );
+
+  const sidebarLoadingIndicatorCommand = vscode.commands.registerCommand(
+    'coolify.sidebarLoadingIndicator',
+    async () => {
+      if (webviewProvider) {
+        await webviewProvider.refreshData();
+      }
+    }
+  );
+
+  const sidebarErrorIndicatorCommand = vscode.commands.registerCommand(
+    'coolify.sidebarErrorIndicator',
+    async () => {
+      if (webviewProvider) {
+        const lastError = webviewProvider.getLastRefreshErrorMessage();
+        if (lastError) {
+          vscode.window.showWarningMessage(lastError);
+        }
         await webviewProvider.refreshData();
       }
     }
@@ -1667,6 +1694,8 @@ export function activate(context: vscode.ExtensionContext) {
     deleteContextCommand,
     contextStatusBarItem,
     refreshApplicationsCommand,
+    sidebarLoadingIndicatorCommand,
+    sidebarErrorIndicatorCommand,
     startDeploymentCommand,
     startApplicationCommand,
     stopApplicationCommand,
