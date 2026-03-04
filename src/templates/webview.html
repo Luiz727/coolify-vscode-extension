@@ -8,23 +8,36 @@
       content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"
     />
     <style>
+      :root {
+        --panel-radius: 10px;
+        --card-radius: 10px;
+        --control-radius: 6px;
+        --panel-padding: 12px;
+      }
+
       body {
         font-family: var(--vscode-font-family);
         color: var(--vscode-foreground);
+        background: var(--vscode-sideBar-background);
         padding: 12px;
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: 14px;
       }
 
       .section {
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 10px;
+        background: var(--vscode-editor-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: var(--panel-radius);
+        padding: var(--panel-padding);
       }
 
       .context-section {
         gap: 8px;
+        background: var(--vscode-sideBar-background);
       }
 
       .section-header {
@@ -33,7 +46,7 @@
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 8px;
       }
 
       .section-header h3 {
@@ -41,6 +54,26 @@
         font-size: 14px;
         font-weight: 600;
         color: var(--vscode-foreground);
+      }
+
+      .section-title-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .section-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 22px;
+        height: 18px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--vscode-badge-background);
+        color: var(--vscode-badge-foreground);
+        font-size: 11px;
+        line-height: 1;
       }
 
       .header-controls {
@@ -51,18 +84,19 @@
       }
 
       .section-toggle-button {
-        width: 24px;
-        height: 24px;
-        border-radius: 4px;
+        width: 26px;
+        height: 26px;
+        border-radius: var(--control-radius);
         border: 1px solid var(--vscode-widget-border);
         background: transparent;
         color: var(--vscode-descriptionForeground);
         cursor: pointer;
-        font-size: 12px;
+        font-size: 11px;
         line-height: 1;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
       }
 
       .section-toggle-button:hover {
@@ -85,7 +119,7 @@
         align-items: center;
         gap: 8px;
         flex-wrap: wrap;
-        margin-top: -4px;
+        margin-top: 0;
       }
 
       .favorite-toggle {
@@ -106,8 +140,8 @@
       }
 
       .status-filter {
-        padding: 4px 8px;
-        border-radius: 4px;
+        padding: 5px 9px;
+        border-radius: var(--control-radius);
         border: 1px solid var(--vscode-widget-border);
         background: var(
           --vscode-dropdown-background,
@@ -119,8 +153,8 @@
       }
 
       .text-filter {
-        padding: 4px 8px;
-        border-radius: 4px;
+        padding: 5px 9px;
+        border-radius: var(--control-radius);
         border: 1px solid var(--vscode-widget-border);
         background: var(
           --vscode-input-background,
@@ -136,13 +170,14 @@
       }
 
       .refresh-button {
-        padding: 4px 8px;
+        padding: 5px 10px;
         background: transparent;
         color: var(--vscode-button-foreground);
         border: 1px solid var(--vscode-button-background);
-        border-radius: 4px;
+        border-radius: var(--control-radius);
         cursor: pointer;
         font-size: 12px;
+        transition: background 120ms ease, border-color 120ms ease;
       }
 
       .refresh-button:hover {
@@ -152,18 +187,25 @@
       .cards-container {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 10px;
       }
 
       .card {
-        background: var(--vscode-editor-background);
+        background: var(--vscode-sideBar-background);
         border: 1px solid var(--vscode-widget-border);
-        border-radius: 8px;
+        border-radius: var(--card-radius);
         padding: 12px;
         min-width: 0;
         display: flex;
         flex-direction: column;
         gap: 12px;
+        transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+      }
+
+      .card:hover {
+        border-color: var(--vscode-focusBorder);
+        background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+        transform: translateY(-1px);
       }
 
       .application-card {
@@ -183,7 +225,7 @@
         right: 8px;
         width: 24px;
         height: 24px;
-        border-radius: 6px;
+        border-radius: var(--control-radius);
         border: 1px solid var(--vscode-widget-border);
         background: transparent;
         color: var(--vscode-descriptionForeground);
@@ -346,14 +388,15 @@
       }
 
       .deploy-button {
-        padding: 4px 12px;
+        padding: 5px 12px;
         background: var(--vscode-button-background);
         color: var(--vscode-button-foreground);
         border: none;
-        border-radius: 4px;
+        border-radius: var(--control-radius);
         cursor: pointer;
         font-size: 12px;
         white-space: nowrap;
+        transition: background 120ms ease;
       }
 
       .deploy-button:hover {
@@ -361,14 +404,15 @@
       }
 
       .secondary-button {
-        padding: 4px 10px;
+        padding: 5px 10px;
         background: transparent;
         color: var(--vscode-button-foreground);
         border: 1px solid var(--vscode-widget-border);
-        border-radius: 4px;
+        border-radius: var(--control-radius);
         cursor: pointer;
         font-size: 12px;
         white-space: nowrap;
+        transition: background 120ms ease, border-color 120ms ease;
       }
 
       .secondary-button:hover {
@@ -435,7 +479,7 @@
         min-height: 34px;
         box-sizing: border-box;
         padding: 8px 10px;
-        border-radius: 6px;
+        border-radius: var(--control-radius);
         border: 1px solid transparent;
         font-size: 12px;
         visibility: hidden;
@@ -474,7 +518,35 @@
         text-align: center;
         padding: 20px;
         color: var(--vscode-descriptionForeground);
-        font-style: italic;
+        border: 1px dashed var(--vscode-widget-border);
+        border-radius: var(--control-radius);
+        background: var(--vscode-sideBar-background);
+      }
+
+      .section-toggle-button:focus-visible,
+      .refresh-button:focus-visible,
+      .secondary-button:focus-visible,
+      .deploy-button:focus-visible,
+      .favorite-button:focus-visible,
+      .status-filter:focus-visible,
+      .text-filter:focus-visible,
+      .favorite-toggle input:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 1px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .card,
+        .refresh-button,
+        .secondary-button,
+        .deploy-button,
+        .section-toggle-button,
+        .loading-spinner,
+        .deployment-status-running,
+        .deployment-status-queued {
+          transition: none;
+          animation: none;
+        }
       }
 
       @keyframes spin {
@@ -520,7 +592,10 @@
 
     <div class="section" id="applications-section">
       <div class="section-header">
-        <h3 id="applications-title">Applications</h3>
+        <div class="section-title-group">
+          <h3 id="applications-title">Applications</h3>
+          <span id="applications-count" class="section-count">0</span>
+        </div>
         <div class="header-controls">
           <button
             class="section-toggle-button"
@@ -569,7 +644,10 @@
 
     <div class="section" id="deployments-section">
       <div class="section-header">
-        <h3 id="deployments-title">Active Deployments</h3>
+        <div class="section-title-group">
+          <h3 id="deployments-title">Active Deployments</h3>
+          <span id="deployments-count" class="section-count">0</span>
+        </div>
         <div class="header-controls">
           <button
             class="section-toggle-button"
@@ -607,7 +685,10 @@
 
     <div class="section" id="services-section">
       <div class="section-header">
-        <h3 id="services-title">Services</h3>
+        <div class="section-title-group">
+          <h3 id="services-title">Services</h3>
+          <span id="services-count" class="section-count">0</span>
+        </div>
         <div class="header-controls">
           <button
             class="section-toggle-button"
@@ -632,7 +713,10 @@
 
     <div class="section" id="databases-section">
       <div class="section-header">
-        <h3 id="databases-title">Databases</h3>
+        <div class="section-title-group">
+          <h3 id="databases-title">Databases</h3>
+          <span id="databases-count" class="section-count">0</span>
+        </div>
         <div class="header-controls">
           <button
             class="section-toggle-button"
@@ -657,7 +741,10 @@
 
     <div class="section" id="projects-section">
       <div class="section-header">
-        <h3 id="projects-title">Projects</h3>
+        <div class="section-title-group">
+          <h3 id="projects-title">Projects</h3>
+          <span id="projects-count" class="section-count">0</span>
+        </div>
         <div class="header-controls">
           <button
             class="section-toggle-button"
@@ -947,6 +1034,7 @@
       let activeContextName = '';
       let selectedDeploymentStatus = 'all';
       let deploymentAppFilterText = '';
+      let deploymentFilterDebounceHandle = null;
       let envSyncConflictStrategy = 'prompt';
       let lastApplications = [];
       let lastDeployments = [];
@@ -973,30 +1061,35 @@
           toggleButtonId: 'toggle-applications',
           bodyId: 'applications-section-body',
           titleId: 'applications-title',
+          countId: 'applications-count',
         },
         {
           id: 'deployments',
           toggleButtonId: 'toggle-deployments',
           bodyId: 'deployments-section-body',
           titleId: 'deployments-title',
+          countId: 'deployments-count',
         },
         {
           id: 'services',
           toggleButtonId: 'toggle-services',
           bodyId: 'services-section-body',
           titleId: 'services-title',
+          countId: 'services-count',
         },
         {
           id: 'databases',
           toggleButtonId: 'toggle-databases',
           bodyId: 'databases-section-body',
           titleId: 'databases-title',
+          countId: 'databases-count',
         },
         {
           id: 'projects',
           toggleButtonId: 'toggle-projects',
           bodyId: 'projects-section-body',
           titleId: 'projects-title',
+          countId: 'projects-count',
         },
       ];
 
@@ -1071,8 +1164,15 @@
       if (deploymentAppFilter) {
         deploymentAppFilter.addEventListener('input', (event) => {
           deploymentAppFilterText = String(event.target.value || '').trim();
-          renderDeployments(lastDeployments);
-          persistState();
+
+          if (deploymentFilterDebounceHandle) {
+            clearTimeout(deploymentFilterDebounceHandle);
+          }
+
+          deploymentFilterDebounceHandle = setTimeout(() => {
+            renderDeployments(lastDeployments);
+            persistState();
+          }, 180);
         });
       }
 
@@ -1219,6 +1319,7 @@
       }
 
       function toggleSection(sectionId) {
+        const wasCollapsed = collapsedSections.has(sectionId);
         if (collapsedSections.has(sectionId)) {
           collapsedSections.delete(sectionId);
         } else {
@@ -1226,7 +1327,46 @@
         }
 
         applySectionVisibility();
+
+        if (wasCollapsed) {
+          rerenderSection(sectionId);
+        }
+
         persistState();
+      }
+
+      function rerenderSection(sectionId) {
+        if (sectionId === 'applications') {
+          renderApplications(lastApplications);
+          return;
+        }
+        if (sectionId === 'deployments') {
+          renderDeployments(lastDeployments);
+          return;
+        }
+        if (sectionId === 'services') {
+          renderServices(lastServices);
+          return;
+        }
+        if (sectionId === 'databases') {
+          renderDatabases(lastDatabases);
+          return;
+        }
+        if (sectionId === 'projects') {
+          renderProjects(lastProjects);
+        }
+      }
+
+      function updateSectionCount(sectionId, count) {
+        const config = sectionConfigs.find((item) => item.id === sectionId);
+        if (!config?.countId) {
+          return;
+        }
+
+        const countElement = document.getElementById(config.countId);
+        if (countElement) {
+          countElement.textContent = String(Math.max(0, Number(count) || 0));
+        }
       }
 
       function applySectionVisibility() {
@@ -2342,6 +2482,12 @@
           favoriteFilteredApplications
         );
 
+        updateSectionCount('applications', sortedApplications.length);
+
+        if (collapsedSections.has('applications')) {
+          return;
+        }
+
         const appNodes = [];
         if (sortedApplications.length === 0) {
           appNodes.push(createEmptyElement(t('noApplications')));
@@ -2371,6 +2517,12 @@
           return matchesStatus && matchesApplication;
         });
 
+        updateSectionCount('deployments', filteredDeployments.length);
+
+        if (collapsedSections.has('deployments')) {
+          return;
+        }
+
         const deploymentNodes = [];
         if (filteredDeployments.length === 0) {
           deploymentNodes.push(createEmptyElement(t('noDeployments')));
@@ -2386,6 +2538,12 @@
         const servicesContainer = document.getElementById('services');
         const serviceNodes = [];
 
+        updateSectionCount('services', Array.isArray(services) ? services.length : 0);
+
+        if (collapsedSections.has('services')) {
+          return;
+        }
+
         if (!Array.isArray(services) || services.length === 0) {
           serviceNodes.push(createEmptyElement(t('noServices')));
         } else {
@@ -2399,6 +2557,12 @@
         const databasesContainer = document.getElementById('databases');
         const databaseNodes = [];
 
+        updateSectionCount('databases', Array.isArray(databases) ? databases.length : 0);
+
+        if (collapsedSections.has('databases')) {
+          return;
+        }
+
         if (!Array.isArray(databases) || databases.length === 0) {
           databaseNodes.push(createEmptyElement(t('noDatabases')));
         } else {
@@ -2411,6 +2575,12 @@
       function renderProjects(projects) {
         const projectsContainer = document.getElementById('projects');
         const projectNodes = [];
+
+        updateSectionCount('projects', Array.isArray(projects) ? projects.length : 0);
+
+        if (collapsedSections.has('projects')) {
+          return;
+        }
 
         if (!Array.isArray(projects) || projects.length === 0) {
           projectNodes.push(createEmptyElement(t('noProjects')));
