@@ -646,6 +646,8 @@
             <option value="remote-all">Keep remote</option>
             <option value="per-key">Per key</option>
           </select>
+        </div>
+        <div class="filter-row">
           <label class="favorite-toggle" for="favorites-only-toggle">
             <input type="checkbox" id="favorites-only-toggle" />
             <span id="favorites-only-label">Favorites only</span>
@@ -1045,7 +1047,7 @@
       let selectedContainerStatus = 'all';
       const collapsedSections = new Set();
       let showFavoritesOnly = false;
-      let showEnvActions = true;
+      let showEnvActions = false;
       let favoriteApplicationIds = new Set();
       const expandedEnvPanels = new Set();
       const appEnvsByApplicationId = {};
@@ -1239,7 +1241,7 @@
       if (previousState) {
         selectedContainerStatus = previousState.selectedContainerStatus || 'all';
         showFavoritesOnly = !!previousState.showFavoritesOnly;
-        showEnvActions = previousState.showEnvActions !== false;
+        showEnvActions = previousState.showEnvActions === true;
         favoriteApplicationIds = new Set(previousState.favoriteApplicationIds || []);
         (previousState.expandedEnvApplicationIds || []).forEach((applicationId) =>
           expandedEnvPanels.add(applicationId)

@@ -333,11 +333,23 @@ export function registerCoolifyChatParticipant(
         const hasApplicationIntent = looksLikeApplicationIntent(normalizedPrompt);
 
         if (looksLikeConfigureIntent(normalizedPrompt)) {
-          await vscode.commands.executeCommand('coolify.configure');
-          writeMarkdown(
-            stream,
-            'Fluxo de configuração iniciado. Após concluir, posso executar deploy, logs e ações de ciclo de vida.'
+          const selected = await vscode.window.showInformationMessage(
+            'Deseja abrir o fluxo de configuração do Coolify nesta janela?',
+            'Abrir configuração'
           );
+
+          if (selected === 'Abrir configuração') {
+            await vscode.commands.executeCommand('coolify.configure');
+            writeMarkdown(
+              stream,
+              'Fluxo de configuração iniciado nesta janela. Após concluir, posso executar deploy, logs e ações de ciclo de vida.'
+            );
+          } else {
+            writeMarkdown(
+              stream,
+              'Configuração não iniciada automaticamente. Quando quiser, use o botão `Configurar` no painel do Coolify ou execute `Coolify: Configure`.'
+            );
+          }
           return;
         }
 

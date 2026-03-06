@@ -121,10 +121,24 @@ export function registerCoolifyTools(
       {
         prepareInvocation: () => toolPrepareMessage('Iniciando configuração do Coolify...'),
         invoke: async () => {
-          await vscode.commands.executeCommand('coolify.configure');
+          const selected = await vscode.window.showInformationMessage(
+            'Deseja abrir o fluxo de configuração do Coolify nesta janela?',
+            'Abrir configuração'
+          );
+
+          if (selected === 'Abrir configuração') {
+            await vscode.commands.executeCommand('coolify.configure');
+            return createToolResult({
+              ok: true,
+              message: 'Fluxo de configuração iniciado nesta janela.',
+            });
+          }
+
           return createToolResult({
-            ok: true,
-            message: 'Fluxo de configuração iniciado.',
+            ok: false,
+            cancelled: true,
+            message:
+              'Configuração não iniciada automaticamente. Use o botão Configurar no painel ou o comando Coolify: Configure.',
           });
         },
       },
