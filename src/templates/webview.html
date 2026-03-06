@@ -650,6 +650,10 @@
             <input type="checkbox" id="favorites-only-toggle" />
             <span id="favorites-only-label">Favorites only</span>
           </label>
+          <label class="favorite-toggle" for="env-actions-toggle">
+            <input type="checkbox" id="env-actions-toggle" />
+            <span id="env-actions-label">Env actions</span>
+          </label>
         </div>
         <div id="applications" class="cards-container">
           <div class="loading">
@@ -829,6 +833,7 @@
           favoriteAdd: 'Add to favorites',
           favoriteRemove: 'Remove from favorites',
           favoritesOnly: 'Favorites only',
+          envActionsLabel: 'ENV actions',
           contextLabel: 'Context:',
           noContexts: 'No contexts',
           envs: 'Envs',
@@ -909,6 +914,7 @@
           favoriteAdd: 'Adicionar aos favoritos',
           favoriteRemove: 'Remover dos favoritos',
           favoritesOnly: 'Somente favoritas',
+          envActionsLabel: 'Ações de ENV',
           contextLabel: 'Contexto:',
           noContexts: 'Sem contextos',
           envs: 'Envs',
@@ -971,6 +977,7 @@
           'projects-title': t('projectsTitle'),
           'loading-projects': t('loadingProjects'),
           'favorites-only-label': t('favoritesOnly'),
+          'env-actions-label': t('envActionsLabel'),
           'context-label': t('contextLabel'),
           'create-context-button': t('createContext'),
           'delete-context-button': t('deleteContext'),
@@ -1038,6 +1045,7 @@
       let selectedContainerStatus = 'all';
       const collapsedSections = new Set();
       let showFavoritesOnly = false;
+      let showEnvActions = true;
       let favoriteApplicationIds = new Set();
       const expandedEnvPanels = new Set();
       const appEnvsByApplicationId = {};
@@ -1072,6 +1080,7 @@
       const refreshButton = document.getElementById('refresh-button');
       const statusFilter = document.getElementById('status-filter');
       const favoritesOnlyToggle = document.getElementById('favorites-only-toggle');
+      const envActionsToggle = document.getElementById('env-actions-toggle');
       const contextSelect = document.getElementById('context-select');
       const createContextButton = document.getElementById('create-context-button');
       const deleteContextButton = document.getElementById('delete-context-button');
@@ -1138,6 +1147,17 @@
       if (favoritesOnlyToggle) {
         favoritesOnlyToggle.addEventListener('change', (event) => {
           showFavoritesOnly = !!event.target.checked;
+          renderApplications(lastApplications);
+          persistState();
+        });
+      }
+
+      if (envActionsToggle) {
+        envActionsToggle.addEventListener('change', (event) => {
+          showEnvActions = !!event.target.checked;
+          if (!showEnvActions) {
+            expandedEnvPanels.clear();
+          }
           renderApplications(lastApplications);
           persistState();
         });
@@ -1219,6 +1239,7 @@
       if (previousState) {
         selectedContainerStatus = previousState.selectedContainerStatus || 'all';
         showFavoritesOnly = !!previousState.showFavoritesOnly;
+        showEnvActions = previousState.showEnvActions !== false;
         favoriteApplicationIds = new Set(previousState.favoriteApplicationIds || []);
         (previousState.expandedEnvApplicationIds || []).forEach((applicationId) =>
           expandedEnvPanels.add(applicationId)
@@ -1278,6 +1299,10 @@
           favoritesOnlyToggle.checked = showFavoritesOnly;
         }
 
+        if (envActionsToggle) {
+          envActionsToggle.checked = showEnvActions;
+        }
+
         if (deploymentStatusFilter) {
           deploymentStatusFilter.value = selectedDeploymentStatus;
         }
@@ -1320,6 +1345,7 @@
           selectedContainerStatus,
           collapsedSectionIds: Array.from(collapsedSections),
           showFavoritesOnly,
+          showEnvActions,
           favoriteApplicationIds: Array.from(favoriteApplicationIds),
           contextNames: availableContexts,
           activeContextName,
@@ -2004,7 +2030,7 @@
 
         cardMain.appendChild(cardContent);
 
-        if (expandedEnvPanels.has(app.id)) {
+        if (showEnvActions && expandedEnvPanels.has(app.id)) {
           const envPanel = createElement('div', 'env-panel');
 
           if (loadingEnvPanels.has(app.id)) {
@@ -2092,19 +2118,21 @@
         deployButton.addEventListener('click', () => deployApplication(app.id));
         buttonGroup.appendChild(deployButton);
 
-        const envsButton = createElement('button', 'secondary-button', t('envs'));
-        envsButton.type = 'button';
-        envsButton.addEventListener('click', () => listApplicationEnvs(app.id));
-        buttonGroup.appendChild(envsButton);
+        if (showEnvActions) {
+          const envsButton = createElement('button', 'secondary-button', t('envs'));
+          envsButton.type = 'button';
+          envsButton.addEventListener('click', () => listApplicationEnvs(app.id));
+          buttonGroup.appendChild(envsButton);
 
-        const syncEnvButton = createElement(
-          'button',
-          'secondary-button',
-          t('syncEnv')
-        );
-        syncEnvButton.type = 'button';
-        syncEnvButton.addEventListener('click', () => syncApplicationEnvs(app.id));
-        buttonGroup.appendChild(syncEnvButton);
+          const syncEnvButton = createElement(
+            'button',
+            'secondary-button',
+            t('syncEnv')
+          );
+          syncEnvButton.type = 'button';
+          syncEnvButton.addEventListener('click', () => syncApplicationEnvs(app.id));
+          buttonGroup.appendChild(syncEnvButton);
+        }
 
         if (app.externalUrl) {
           const openButton = createElement(
@@ -2117,10 +2145,12 @@
           buttonGroup.appendChild(openButton);
         }
 
-        const addEnvButton = createElement('button', 'secondary-button', t('addEnv'));
-        addEnvButton.type = 'button';
-        addEnvButton.addEventListener('click', () => createApplicationEnv(app.id));
-        buttonGroup.appendChild(addEnvButton);
+        if (showEnvActions) {
+          const addEnvButton = createElement('button', 'secondary-button', t('addEnv'));
+          addEnvButton.type = 'button';
+          addEnvButton.addEventListener('click', () => createApplicationEnv(app.id));
+          buttonGroup.appendChild(addEnvButton);
+        }
 
         cardFooter.appendChild(buttonGroup);
 

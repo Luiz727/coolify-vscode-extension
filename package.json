@@ -72,8 +72,8 @@
       {
         "name": "coolify-configure",
         "toolReferenceName": "coolifyConfigure",
-        "displayName": "Coolify Configure",
-        "modelDescription": "Opens Coolify configuration flow to set server URL and API token securely.",
+        "displayName": "Coolify Configurar",
+        "modelDescription": "Inicia o fluxo de configuração do Coolify para definir URL do servidor e token da API com segurança.",
         "userDescription": "Configura URL e token da API do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -89,8 +89,8 @@
       {
         "name": "coolify-healthCheck",
         "toolReferenceName": "coolifyHealthCheck",
-        "displayName": "Coolify Health Check",
-        "modelDescription": "Checks Coolify connectivity and API token validity.",
+        "displayName": "Coolify Verificar Saúde",
+        "modelDescription": "Verifica conectividade com o Coolify e validade do token da API.",
         "userDescription": "Valida conectividade e token do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -106,8 +106,8 @@
       {
         "name": "coolify-listApplications",
         "toolReferenceName": "coolifyListApplications",
-        "displayName": "Coolify List Applications",
-        "modelDescription": "Lists available Coolify applications with status and metadata.",
+        "displayName": "Coolify Listar Aplicações",
+        "modelDescription": "Lista aplicações disponíveis no Coolify com status e metadados.",
         "userDescription": "Lista aplicações do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -123,8 +123,8 @@
       {
         "name": "coolify-getApplicationStatus",
         "toolReferenceName": "coolifyGetApplicationStatus",
-        "displayName": "Coolify Get Application Status",
-        "modelDescription": "Gets status details for a Coolify application by id or name.",
+        "displayName": "Coolify Status da Aplicação",
+        "modelDescription": "Obtém detalhes de status de uma aplicação do Coolify por id ou nome.",
         "userDescription": "Consulta status de uma aplicação do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -143,14 +143,26 @@
               "type": "string",
               "description": "Application name in Coolify."
             }
-          }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "appId"
+              ]
+            },
+            {
+              "required": [
+                "appName"
+              ]
+            }
+          ]
         }
       },
       {
         "name": "coolify-startDeployment",
         "toolReferenceName": "coolifyStartDeployment",
-        "displayName": "Coolify Start Deployment",
-        "modelDescription": "Starts a new deployment for a Coolify application by id or name.",
+        "displayName": "Coolify Iniciar Deployment",
+        "modelDescription": "Inicia um novo deployment para uma aplicação do Coolify por id ou nome.",
         "userDescription": "Inicia deploy de aplicação no Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -169,14 +181,26 @@
               "type": "string",
               "description": "Application name in Coolify."
             }
-          }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "appId"
+              ]
+            },
+            {
+              "required": [
+                "appName"
+              ]
+            }
+          ]
         }
       },
       {
         "name": "coolify-applicationLifecycle",
         "toolReferenceName": "coolifyApplicationLifecycle",
-        "displayName": "Coolify Application Lifecycle",
-        "modelDescription": "Runs start, stop, or restart lifecycle actions for a Coolify application.",
+        "displayName": "Coolify Ciclo de Vida da Aplicação",
+        "modelDescription": "Executa ações de ciclo de vida (start, stop ou restart) para uma aplicação do Coolify.",
         "userDescription": "Executa start/stop/restart em aplicação do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -213,8 +237,8 @@
       {
         "name": "coolify-getDeploymentLogs",
         "toolReferenceName": "coolifyGetDeploymentLogs",
-        "displayName": "Coolify Get Deployment Logs",
-        "modelDescription": "Returns logs for a deployment by deployment id or latest deployment from an application.",
+        "displayName": "Coolify Logs de Deployment",
+        "modelDescription": "Retorna logs de um deployment por identificador do deployment ou por aplicação.",
         "userDescription": "Obtém logs de deployment no Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -237,14 +261,31 @@
               "type": "string",
               "description": "Application name in Coolify."
             }
-          }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "deploymentId"
+              ]
+            },
+            {
+              "required": [
+                "appId"
+              ]
+            },
+            {
+              "required": [
+                "appName"
+              ]
+            }
+          ]
         }
       },
       {
         "name": "coolify-listServices",
         "toolReferenceName": "coolifyListServices",
-        "displayName": "Coolify List Services",
-        "modelDescription": "Lists available Coolify services with status and metadata.",
+        "displayName": "Coolify Listar Serviços",
+        "modelDescription": "Lista serviços disponíveis no Coolify com status e metadados.",
         "userDescription": "Lista serviços do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -260,8 +301,8 @@
       {
         "name": "coolify-serviceLifecycle",
         "toolReferenceName": "coolifyServiceLifecycle",
-        "displayName": "Coolify Service Lifecycle",
-        "modelDescription": "Runs start, stop, or restart lifecycle actions for a Coolify service.",
+        "displayName": "Coolify Ciclo de Vida do Serviço",
+        "modelDescription": "Executa ações de ciclo de vida (start, stop ou restart) para um serviço do Coolify.",
         "userDescription": "Executa start/stop/restart em serviço do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -299,8 +340,8 @@
       {
         "name": "coolify-listDatabases",
         "toolReferenceName": "coolifyListDatabases",
-        "displayName": "Coolify List Databases",
-        "modelDescription": "Lists available Coolify databases with status and metadata.",
+        "displayName": "Coolify Listar Bancos de Dados",
+        "modelDescription": "Lista bancos de dados disponíveis no Coolify com status e metadados.",
         "userDescription": "Lista bancos de dados do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -316,8 +357,8 @@
       {
         "name": "coolify-databaseLifecycle",
         "toolReferenceName": "coolifyDatabaseLifecycle",
-        "displayName": "Coolify Database Lifecycle",
-        "modelDescription": "Runs start, stop, or restart lifecycle actions for a Coolify database.",
+        "displayName": "Coolify Ciclo de Vida do Banco de Dados",
+        "modelDescription": "Executa ações de ciclo de vida (start, stop ou restart) para um banco de dados do Coolify.",
         "userDescription": "Executa start/stop/restart em banco de dados do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -358,7 +399,7 @@
         "id": "coolify.chat",
         "name": "coolify",
         "fullName": "Coolify Assistant",
-        "description": "Manage Coolify applications from chat: configure, list, status, deploy, logs, and lifecycle actions."
+        "description": "Gerencie recursos do Coolify pelo chat: configurar, listar, status, deploy, logs e ações de ciclo de vida."
       }
     ],
     "configuration": {

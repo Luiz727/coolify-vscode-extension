@@ -27,14 +27,36 @@ interface DeploymentListItem {
   createdAt: string;
 }
 
+interface ServiceListItem {
+  id: string;
+  name: string;
+  status: string;
+  description: string;
+}
+
+interface DatabaseListItem {
+  id: string;
+  name: string;
+  status: string;
+  description: string;
+}
+
 interface CoolifyProviderLike {
   getApplications(): Promise<ApplicationListItem[]>;
   getDeployments(): Promise<DeploymentListItem[]>;
+  getServices(): Promise<ServiceListItem[]>;
+  getDatabases(): Promise<DatabaseListItem[]>;
   getDeploymentLogs(deploymentId: string): Promise<string>;
   deployApplication(applicationId: string): Promise<void>;
   startApplication(applicationId: string): Promise<string>;
   stopApplication(applicationId: string): Promise<string>;
   restartApplication(applicationId: string): Promise<string>;
+  startService(serviceId: string): Promise<string>;
+  stopService(serviceId: string): Promise<string>;
+  restartService(serviceId: string): Promise<string>;
+  startDatabase(databaseId: string): Promise<string>;
+  stopDatabase(databaseId: string): Promise<string>;
+  restartDatabase(databaseId: string): Promise<string>;
 }
 
 type ProviderResolver = () => CoolifyProviderLike | undefined;
@@ -74,6 +96,38 @@ function extractTarget(prompt: string): string | undefined {
   return undefined;
 }
 
+  function extractServiceTarget(prompt: string): string | undefined {
+    const quoted = prompt.match(/"([^"]+)"/);
+    if (quoted?.[1]) {
+      return quoted[1].trim();
+    }
+
+    const targetByKeyword = prompt.match(
+      /(?:service|servico|serviço)\s+([a-zA-Z0-9._-]+)/i
+    );
+    if (targetByKeyword?.[1]) {
+      return targetByKeyword[1].trim();
+    }
+
+    return undefined;
+  }
+
+  function extractDatabaseTarget(prompt: string): string | undefined {
+    const quoted = prompt.match(/"([^"]+)"/);
+    if (quoted?.[1]) {
+      return quoted[1].trim();
+    }
+
+    const targetByKeyword = prompt.match(
+      /(?:database|databases|banco|bancos)\s+([a-zA-Z0-9._-]+)/i
+    );
+    if (targetByKeyword?.[1]) {
+      return targetByKeyword[1].trim();
+    }
+
+    return undefined;
+  }
+
 function findApplication(
   applications: ApplicationListItem[],
   target?: string
@@ -108,6 +162,34 @@ function looksLikeListIntent(normalizedPrompt: string): boolean {
     normalizedPrompt.includes('apps')
   );
 }
+
+  function looksLikeApplicationIntent(normalizedPrompt: string): boolean {
+    return (
+      normalizedPrompt.includes('applications') ||
+      normalizedPrompt.includes('aplicacoes') ||
+      normalizedPrompt.includes('apps') ||
+      normalizedPrompt.includes('app') ||
+      normalizedPrompt.includes('aplicacao') ||
+      normalizedPrompt.includes('aplicação')
+    );
+  }
+
+  function looksLikeServiceIntent(normalizedPrompt: string): boolean {
+    return (
+      normalizedPrompt.includes('service') ||
+      normalizedPrompt.includes('servico') ||
+      normalizedPrompt.includes('serviço')
+    );
+  }
+
+  function looksLikeDatabaseIntent(normalizedPrompt: string): boolean {
+    return (
+      normalizedPrompt.includes('database') ||
+      normalizedPrompt.includes('databases') ||
+      normalizedPrompt.includes('banco') ||
+      normalizedPrompt.includes('bancos')
+    );
+  }
 
 function looksLikeStatusIntent(normalizedPrompt: string): boolean {
   return normalizedPrompt.includes('status') || normalizedPrompt.includes('estado');
@@ -181,6 +263,10 @@ function helpText(): string {
     '- `deploy da app "nome"`',
     '- `logs da app "nome"`',
     '- `restart|stop|start da app "nome"`',
+    '- `listar serviços`',
+    '- `start|stop|restart do serviço "nome"`',
+    '- `listar bancos`',
+    '- `start|stop|restart do banco "nome"`',
     '- `health check coolify`',
   ].join('\n');
 }
@@ -239,7 +325,12 @@ export function registerCoolifyChatParticipant(
         }
 
         const normalizedPrompt = normalize(prompt);
-        const target = extractTarget(prompt);
+        const appTarget = extractTarget(prompt);
+        const serviceTarget = extractServiceTarget(prompt);
+        const databaseTarget = extractDatabaseTarget(prompt);
+        const hasServiceIntent = looksLikeServiceIntent(normalizedPrompt);
+        const hasDatabaseIntent = looksLikeDatabaseIntent(normalizedPrompt);
+        const hasApplicationIntent = looksLikeApplicationIntent(normalizedPrompt);
 
         if (looksLikeConfigureIntent(normalizedPrompt)) {
           await vscode.commands.executeCommand('coolify.configure');
@@ -290,7 +381,48 @@ export function registerCoolifyChatParticipant(
           return;
         }
 
-        if (looksLikeListIntent(normalizedPrompt) && !looksLikeDeployIntent(normalizedPrompt)) {
+        if (
+          looksLikeListIntent(normalizedPrompt) &&
+          !looksLikeDeployIntent(normalizedPrompt) &&
+          hasServiceIntent
+        ) {
+          writeProgress(stream, 'Buscando serviços...');
+          const services = await provider.getServices();
+          if (!services.length) {
+            writeMarkdown(stream, 'Nenhum serviço encontrado.');
+            return;
+          }
+
+          const list = services
+            .map((service) => `- ${service.name} (${service.status})`)
+            .join('\n');
+          writeMarkdown(stream, `Serviços encontrados:\n${list}`);
+          return;
+        }
+
+        if (
+          looksLikeListIntent(normalizedPrompt) &&
+          !looksLikeDeployIntent(normalizedPrompt) &&
+          hasDatabaseIntent
+        ) {
+          writeProgress(stream, 'Buscando bancos de dados...');
+          const databases = await provider.getDatabases();
+          if (!databases.length) {
+            writeMarkdown(stream, 'Nenhum banco de dados encontrado.');
+            return;
+          }
+
+          const list = databases
+            .map((database) => `- ${database.name} (${database.status})`)
+            .join('\n');
+          writeMarkdown(stream, `Bancos de dados encontrados:\n${list}`);
+          return;
+        }
+
+        if (
+          looksLikeListIntent(normalizedPrompt) &&
+          !looksLikeDeployIntent(normalizedPrompt)
+        ) {
           writeProgress(stream, 'Buscando aplicações...');
           const applications = await provider.getApplications();
           if (!applications.length) {
@@ -305,6 +437,48 @@ export function registerCoolifyChatParticipant(
           return;
         }
 
+        if (looksLikeStatusIntent(normalizedPrompt) && hasServiceIntent) {
+          writeProgress(stream, 'Consultando status de serviços...');
+          const services = await provider.getServices();
+          if (!services.length) {
+            writeMarkdown(stream, 'Nenhum serviço encontrado.');
+            return;
+          }
+
+          const service = findService(services, serviceTarget);
+          if (service) {
+            writeMarkdown(stream, `Status de ${service.name}: ${service.status}`);
+            return;
+          }
+
+          const statuses = services
+            .map((item) => `- ${item.name}: ${item.status}`)
+            .join('\n');
+          writeMarkdown(stream, `Status dos serviços:\n${statuses}`);
+          return;
+        }
+
+        if (looksLikeStatusIntent(normalizedPrompt) && hasDatabaseIntent) {
+          writeProgress(stream, 'Consultando status de bancos de dados...');
+          const databases = await provider.getDatabases();
+          if (!databases.length) {
+            writeMarkdown(stream, 'Nenhum banco de dados encontrado.');
+            return;
+          }
+
+          const database = findDatabase(databases, databaseTarget);
+          if (database) {
+            writeMarkdown(stream, `Status de ${database.name}: ${database.status}`);
+            return;
+          }
+
+          const statuses = databases
+            .map((item) => `- ${item.name}: ${item.status}`)
+            .join('\n');
+          writeMarkdown(stream, `Status dos bancos de dados:\n${statuses}`);
+          return;
+        }
+
         if (looksLikeStatusIntent(normalizedPrompt)) {
           writeProgress(stream, 'Consultando status...');
           const applications = await provider.getApplications();
@@ -313,7 +487,7 @@ export function registerCoolifyChatParticipant(
             return;
           }
 
-          const app = findApplication(applications, target);
+          const app = findApplication(applications, appTarget);
           if (app) {
             writeMarkdown(stream, `Status de ${app.name}: ${app.status}`);
             return;
@@ -334,7 +508,7 @@ export function registerCoolifyChatParticipant(
             return;
           }
 
-          const app = findApplication(applications, target);
+          const app = findApplication(applications, appTarget);
           if (!app) {
             writeMarkdown(
               stream,
@@ -356,9 +530,9 @@ export function registerCoolifyChatParticipant(
             return;
           }
 
-          const filtered = target
+          const filtered = appTarget
             ? deployments.filter((deployment) =>
-                normalize(deployment.applicationName).includes(normalize(target))
+                normalize(deployment.applicationName).includes(normalize(appTarget))
               )
             : deployments;
 
@@ -391,6 +565,66 @@ ${output}
 
         const action = lifecycleAction(normalizedPrompt);
         if (action) {
+          if (hasServiceIntent && !hasApplicationIntent) {
+            writeProgress(stream, `Executando ação ${action} no serviço...`);
+            const services = await provider.getServices();
+            if (!services.length) {
+              writeMarkdown(stream, 'Nenhum serviço encontrado.');
+              return;
+            }
+
+            const service = findService(services, serviceTarget);
+            if (!service) {
+              writeMarkdown(
+                stream,
+                `Não consegui identificar o serviço. Use, por exemplo: \`${action} do serviço "meu-servico"\`.`
+              );
+              return;
+            }
+
+            let result = '';
+            if (action === 'start') {
+              result = await provider.startService(service.id);
+            } else if (action === 'stop') {
+              result = await provider.stopService(service.id);
+            } else {
+              result = await provider.restartService(service.id);
+            }
+
+            writeMarkdown(stream, result || `Ação ${action} enviada para ${service.name}.`);
+            return;
+          }
+
+          if (hasDatabaseIntent && !hasApplicationIntent) {
+            writeProgress(stream, `Executando ação ${action} no banco de dados...`);
+            const databases = await provider.getDatabases();
+            if (!databases.length) {
+              writeMarkdown(stream, 'Nenhum banco de dados encontrado.');
+              return;
+            }
+
+            const database = findDatabase(databases, databaseTarget);
+            if (!database) {
+              writeMarkdown(
+                stream,
+                `Não consegui identificar o banco de dados. Use, por exemplo: \`${action} do banco "meu-banco"\`.`
+              );
+              return;
+            }
+
+            let result = '';
+            if (action === 'start') {
+              result = await provider.startDatabase(database.id);
+            } else if (action === 'stop') {
+              result = await provider.stopDatabase(database.id);
+            } else {
+              result = await provider.restartDatabase(database.id);
+            }
+
+            writeMarkdown(stream, result || `Ação ${action} enviada para ${database.name}.`);
+            return;
+          }
+
           writeProgress(stream, `Executando ação ${action}...`);
           const applications = await provider.getApplications();
           if (!applications.length) {
@@ -398,7 +632,7 @@ ${output}
             return;
           }
 
-          const app = findApplication(applications, target);
+          const app = findApplication(applications, appTarget);
           if (!app) {
             writeMarkdown(
               stream,
@@ -431,5 +665,51 @@ ${output}
         );
       }
     }
+  );
+}
+
+function findService(
+  services: ServiceListItem[],
+  target?: string
+): ServiceListItem | undefined {
+  if (!target) {
+    return services.length === 1 ? services[0] : undefined;
+  }
+
+  const normalizedTarget = normalize(target);
+  const exact = services.find(
+    (service) =>
+      normalize(service.name) === normalizedTarget ||
+      normalize(service.id) === normalizedTarget
+  );
+  if (exact) {
+    return exact;
+  }
+
+  return services.find((service) =>
+    normalize(service.name).includes(normalizedTarget)
+  );
+}
+
+function findDatabase(
+  databases: DatabaseListItem[],
+  target?: string
+): DatabaseListItem | undefined {
+  if (!target) {
+    return databases.length === 1 ? databases[0] : undefined;
+  }
+
+  const normalizedTarget = normalize(target);
+  const exact = databases.find(
+    (database) =>
+      normalize(database.name) === normalizedTarget ||
+      normalize(database.id) === normalizedTarget
+  );
+  if (exact) {
+    return exact;
+  }
+
+  return databases.find((database) =>
+    normalize(database.name).includes(normalizedTarget)
   );
 }

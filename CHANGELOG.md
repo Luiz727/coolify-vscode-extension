@@ -54,4 +54,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Feature: add database backups actions in sidebar (`Backups`, `Create backup`, `Restore`) with API fallback strategy.
 - Feature: add projects section in sidebar with on-demand project details and environment visibility (`GET /api/v1/projects`, `GET /api/v1/projects/{uuid}`).
 - Feature: add Copilot Configure Tools for services/databases (list + start/stop/restart lifecycle actions).
+- Chat: padroniza descrições de `languageModelTools` em PT-BR e melhora schemas para reduzir ambiguidade de parâmetros.
+- Chat: amplia `@coolify` com exemplos e intents para serviços/bancos (listar, status e lifecycle).
 - Docs: add security notes for transport configuration.
