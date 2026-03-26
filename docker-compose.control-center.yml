@@ -1,0 +1,42 @@
+services:
+  control-center-backend:
+    container_name: control-center-backend
+    build:
+      context: ./web-control-center/backend
+    environment:
+      COOLIFY_BASE_URL: ${COOLIFY_BASE_URL}
+      COOLIFY_TOKEN: ${COOLIFY_TOKEN}
+      WEB_AUTH_USER: ${WEB_AUTH_USER:-}
+      WEB_AUTH_PASSWORD: ${WEB_AUTH_PASSWORD:-}
+      WEB_ACCESS_TOKEN: ${WEB_ACCESS_TOKEN:-}
+      AUDIT_LOG_PATH: ${AUDIT_LOG_PATH:-./web-control-center/backend/audit.log.jsonl}
+      PORT: 8787
+    restart: unless-stopped
+
+  control-center-frontend:
+    container_name: control-center-frontend
+    build:
+      context: ./web-control-center/frontend
+    depends_on:
+      - control-center-backend
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.services.control-center-web.loadbalancer.server.port=8080
+      - traefik.http.routers.control-center-web-http.rule=Host(`control.nixcon.com.br`)
+      - traefik.http.routers.control-center-web-http.entrypoints=http
+      - traefik.http.routers.control-center-web-http.service=control-center-web
+      - traefik.http.routers.control-center-web-https.rule=Host(`control.nixcon.com.br`)
+      - traefik.http.routers.control-center-web-https.entrypoints=https
+      - traefik.http.routers.control-center-web-https.tls=true
+      - traefik.http.routers.control-center-web-https.service=control-center-web
+    ports:
+      - "8088:8080"
+    networks:
+      - default
+      - coolify
+    restart: unless-stopped
+
+networks:
+  coolify:
+    external: true

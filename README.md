@@ -103,3 +103,4 @@ Initial release of VSCode Coolify Extension with the following features:
 ## Documentation
 
 - [Operational Guide](docs/OPERATIONAL_GUIDE.md) — supported/unsupported matrix, troubleshooting, and expanded security guidance.
+- [Control Center Web Prototype](web-control-center/README.md) — dashboard web multi-projetos (fase 1) com Docker.
