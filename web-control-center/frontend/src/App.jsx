@@ -31,6 +31,44 @@ function resourceKey(resource) {
   return `${resource.type}:${resource.uuid}`;
 }
 
+function groupLogsByContainer(rawLogs) {
+  const text = String(rawLogs || '');
+  if (!text.trim()) {
+    return [];
+  }
+
+  const lines = text.split('\n');
+  const groups = new Map();
+
+  for (const line of lines) {
+    const composeMatch = line.match(/^([a-zA-Z0-9_.-]+)\s+\|\s?(.*)$/);
+    const bracketMatch = line.match(/^\[([^\]]+)\]\s?(.*)$/);
+
+    let key = 'application';
+    let message = line;
+
+    if (composeMatch) {
+      key = composeMatch[1];
+      message = composeMatch[2];
+    } else if (bracketMatch) {
+      key = bracketMatch[1];
+      message = bracketMatch[2];
+    }
+
+    const current = groups.get(key) || [];
+    current.push(message);
+    groups.set(key, current);
+  }
+
+  return Array.from(groups.entries())
+    .map(([name, chunk]) => ({
+      name,
+      lines: chunk.length,
+      logs: chunk.join('\n').trim(),
+    }))
+    .sort((a, b) => b.lines - a.lines);
+}
+
 function readStorage(key, fallbackValue) {
   try {
     const raw = window.localStorage.getItem(key);
@@ -154,6 +192,7 @@ export default function App() {
   const [selectedResource, setSelectedResource] = useState(null);
   const [applicationLogs, setApplicationLogs] = useState('');
   const [applicationLogMeta, setApplicationLogMeta] = useState(null);
+  const [applicationContainerLogs, setApplicationContainerLogs] = useState([]);
   const [isLoadingApplicationLogs, setIsLoadingApplicationLogs] = useState(false);
   const [applicationLogHistory, setApplicationLogHistory] = useState([]);
   const [isLoadingApplicationLogHistory, setIsLoadingApplicationLogHistory] = useState(false);
@@ -409,10 +448,13 @@ export default function App() {
     setIsLoadingApplicationLogs(true);
     try {
       const payload = await apiFetch(`/api/logs/applications/${applicationUuid}/latest`);
-      setApplicationLogs(payload.logs || '');
+      const logsText = payload.logs || '';
+      setApplicationLogs(logsText);
+      setApplicationContainerLogs(groupLogsByContainer(logsText));
       setApplicationLogMeta(payload.deployment || null);
     } catch (fetchError) {
       setApplicationLogs(`Erro ao carregar logs: ${fetchError.message || 'desconhecido'}`);
+      setApplicationContainerLogs([]);
       setApplicationLogMeta(null);
     } finally {
       setIsLoadingApplicationLogs(false);
@@ -845,6 +887,7 @@ export default function App() {
               auditLoading={auditLoading}
               applicationLogs={applicationLogs}
               applicationLogMeta={applicationLogMeta}
+              applicationContainerLogs={applicationContainerLogs}
               isLoadingApplicationLogs={isLoadingApplicationLogs}
               applicationLogHistory={applicationLogHistory}
               isLoadingApplicationLogHistory={isLoadingApplicationLogHistory}
@@ -875,6 +918,7 @@ function InspectorPanel({
   auditLoading,
   applicationLogs,
   applicationLogMeta,
+  applicationContainerLogs,
   isLoadingApplicationLogs,
   applicationLogHistory,
   isLoadingApplicationLogHistory,
@@ -970,6 +1014,23 @@ function InspectorPanel({
           <pre className="log-preview">
             {applicationLogs || 'Nenhum log retornado para a ultima execucao.'}
           </pre>
+
+          <div className="section-title">Logs por container (extraido)</div>
+          <div className="history-list">
+            {applicationContainerLogs.map((entry) => (
+              <details key={entry.name} className="history-item">
+                <summary>
+                  {entry.name} - {entry.lines} linhas
+                </summary>
+                <pre className="log-preview small">{entry.logs || 'Sem logs neste grupo.'}</pre>
+              </details>
+            ))}
+            {applicationContainerLogs.length === 0 && (
+              <div className="empty-box small">
+                Nao foi possivel segmentar por container neste log; exibindo apenas log bruto.
+              </div>
+            )}
+          </div>
 
           <div className="section-title">Historico (ultimos 5 deploys)</div>
           <div className="history-list">
