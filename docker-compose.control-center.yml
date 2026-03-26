@@ -9,8 +9,10 @@ services:
       WEB_AUTH_USER: ${WEB_AUTH_USER:-}
       WEB_AUTH_PASSWORD: ${WEB_AUTH_PASSWORD:-}
       WEB_ACCESS_TOKEN: ${WEB_ACCESS_TOKEN:-}
-      AUDIT_LOG_PATH: ${AUDIT_LOG_PATH:-./web-control-center/backend/audit.log.jsonl}
+      AUDIT_LOG_PATH: ${AUDIT_LOG_PATH:-/var/lib/control-center/audit.log.jsonl}
       PORT: 8787
+    volumes:
+      - ./web-control-center/backend/data:/var/lib/control-center
     restart: unless-stopped
 
   control-center-frontend:

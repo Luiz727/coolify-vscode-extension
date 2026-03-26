@@ -63,11 +63,12 @@ docker compose -f docker-compose.control-center.yml up --build -d
 - `GET /api/audit`
 - `GET /api/deployments/applications/:uuid`
 - `GET /api/logs/applications/:uuid/latest`
+- `GET /api/logs/applications/:uuid/history`
 
 ## Observacoes
 
 - O painel usa os mesmos endpoints principais ja usados pela extensao VS Code.
 - O feed de logs e orientado a eventos operacionais e historico recente de deploy por aplicacao.
-- Auditoria persistente fica em `AUDIT_LOG_PATH` no formato JSONL (uma linha JSON por evento).
+- Auditoria persistente fica em `AUDIT_LOG_PATH` no formato JSONL (uma linha JSON por evento). No compose padrao, o backend monta `./web-control-center/backend/data` em `/var/lib/control-center`.
 - Quando `WEB_AUTH_USER` e `WEB_AUTH_PASSWORD` estao definidos, a API exige Bearer token gerado via `POST /auth/login`.
 - Para terminal web completo em multiplas sessoes, a proxima fase deve integrar websocket/realtime com politicas de autorizacao e auditoria.

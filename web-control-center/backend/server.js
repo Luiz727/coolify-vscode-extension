@@ -16,7 +16,7 @@ const AUTH_ENABLED = Boolean(WEB_AUTH_USER && WEB_AUTH_PASSWORD);
 
 const AUDIT_LOG_PATH = path.resolve(
   process.cwd(),
-  process.env.AUDIT_LOG_PATH || './web-control-center/backend/audit.log.jsonl'
+  process.env.AUDIT_LOG_PATH || './audit.log.jsonl'
 );
 
 function ensureApiBase(baseUrl) {
@@ -210,8 +210,13 @@ async function executeAction({ resourceType, uuid, action }) {
     service: 'services',
     database: 'databases',
   };
-  const allowedActions = new Set(['start', 'stop', 'restart', 'deploy']);
+  const allowedActionsByType = {
+    application: new Set(['start', 'stop', 'restart', 'deploy']),
+    service: new Set(['start', 'stop', 'restart']),
+    database: new Set(['start', 'stop', 'restart']),
+  };
   const collection = allowedTypeMap[resourceType];
+  const allowedActions = allowedActionsByType[resourceType];
 
   if (!collection) {
     const error = new Error('resourceType invalido.');
@@ -219,8 +224,8 @@ async function executeAction({ resourceType, uuid, action }) {
     throw error;
   }
 
-  if (!allowedActions.has(action)) {
-    const error = new Error('action invalida.');
+  if (!allowedActions || !allowedActions.has(action)) {
+    const error = new Error('action invalida para resourceType informado.');
     error.status = 400;
     throw error;
   }

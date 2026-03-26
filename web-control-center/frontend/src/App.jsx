@@ -31,6 +31,21 @@ function resourceKey(resource) {
   return `${resource.type}:${resource.uuid}`;
 }
 
+function canExecuteAction(resourceType, action) {
+  const allowedTypes = new Set(['application', 'service', 'database']);
+  const allowedActions = new Set(['start', 'stop', 'restart', 'deploy']);
+
+  if (!allowedTypes.has(resourceType) || !allowedActions.has(action)) {
+    return false;
+  }
+
+  if (action === 'deploy' && resourceType !== 'application') {
+    return false;
+  }
+
+  return true;
+}
+
 function groupLogsByContainer(rawLogs) {
   const text = String(rawLogs || '');
   if (!text.trim()) {
@@ -588,9 +603,15 @@ export default function App() {
   }
 
   async function runBatch() {
-    const items = Array.from(batchSelected)
+    const selectedResources = Array.from(batchSelected)
       .map((key) => resourcesByKey.get(key))
-      .filter(Boolean)
+      .filter(Boolean);
+
+    const skipped = selectedResources.filter(
+      (resource) => !canExecuteAction(resource.type, batchAction)
+    );
+    const items = selectedResources
+      .filter((resource) => canExecuteAction(resource.type, batchAction))
       .map((resource) => ({
         resourceType: resource.type,
         uuid: resource.uuid,
@@ -598,7 +619,28 @@ export default function App() {
       }));
 
     if (items.length === 0) {
+      setEvents((prev) => [
+        {
+          id: `${Date.now()}-${Math.random()}`,
+          level: 'error',
+          message: `Nenhum recurso selecionado suporta a acao em lote "${batchAction}".`,
+          timestamp: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
       return;
+    }
+
+    if (skipped.length > 0) {
+      setEvents((prev) => [
+        {
+          id: `${Date.now()}-${Math.random()}`,
+          level: 'error',
+          message: `${skipped.length} recurso(s) foram ignorados no lote por nao suportarem "${batchAction}".`,
+          timestamp: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
     }
 
     setBatchPending(true);
