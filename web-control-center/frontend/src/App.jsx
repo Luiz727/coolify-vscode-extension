@@ -155,6 +155,8 @@ export default function App() {
   const [applicationLogs, setApplicationLogs] = useState('');
   const [applicationLogMeta, setApplicationLogMeta] = useState(null);
   const [isLoadingApplicationLogs, setIsLoadingApplicationLogs] = useState(false);
+  const [applicationLogHistory, setApplicationLogHistory] = useState([]);
+  const [isLoadingApplicationLogHistory, setIsLoadingApplicationLogHistory] = useState(false);
   const [auditEntries, setAuditEntries] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
 
@@ -417,6 +419,18 @@ export default function App() {
     }
   }
 
+  async function loadApplicationLogHistory(applicationUuid) {
+    setIsLoadingApplicationLogHistory(true);
+    try {
+      const payload = await apiFetch(`/api/logs/applications/${applicationUuid}/history?take=5`);
+      setApplicationLogHistory(Array.isArray(payload.entries) ? payload.entries : []);
+    } catch {
+      setApplicationLogHistory([]);
+    } finally {
+      setIsLoadingApplicationLogHistory(false);
+    }
+  }
+
   async function loadCompareApplicationLogs(resource) {
     const key = resourceKey(resource);
     setCompareLogState((prev) => ({
@@ -507,6 +521,7 @@ export default function App() {
 
       if (resource.type === 'application' && selectedResource?.uuid === resource.uuid) {
         await loadLatestApplicationLogs(resource.uuid);
+        await loadApplicationLogHistory(resource.uuid);
       }
 
       const inCompare = compareSlots.some(
@@ -584,6 +599,7 @@ export default function App() {
     }
 
     loadLatestApplicationLogs(selectedResource.uuid);
+    loadApplicationLogHistory(selectedResource.uuid);
     const timer = setInterval(() => {
       loadLatestApplicationLogs(selectedResource.uuid);
     }, 12000);
@@ -830,7 +846,10 @@ export default function App() {
               applicationLogs={applicationLogs}
               applicationLogMeta={applicationLogMeta}
               isLoadingApplicationLogs={isLoadingApplicationLogs}
+              applicationLogHistory={applicationLogHistory}
+              isLoadingApplicationLogHistory={isLoadingApplicationLogHistory}
               onRefreshLogs={loadLatestApplicationLogs}
+              onRefreshLogHistory={loadApplicationLogHistory}
               onRefreshAudit={fetchAudit}
             />
           )}
@@ -857,7 +876,10 @@ function InspectorPanel({
   applicationLogs,
   applicationLogMeta,
   isLoadingApplicationLogs,
+  applicationLogHistory,
+  isLoadingApplicationLogHistory,
   onRefreshLogs,
+  onRefreshLogHistory,
   onRefreshAudit,
 }) {
   return (
@@ -919,13 +941,22 @@ function InspectorPanel({
         <div className="inspector-block">
           <div className="inspector-block-title row">
             <span>Logs recentes (ultimo deployment)</span>
-            <button
-              className="btn"
-              onClick={() => onRefreshLogs(selectedResource.uuid)}
-              disabled={isLoadingApplicationLogs}
-            >
-              {isLoadingApplicationLogs ? 'Atualizando...' : 'Atualizar logs'}
-            </button>
+            <div className="inline-actions">
+              <button
+                className="btn"
+                onClick={() => onRefreshLogs(selectedResource.uuid)}
+                disabled={isLoadingApplicationLogs}
+              >
+                {isLoadingApplicationLogs ? 'Atualizando...' : 'Atualizar ultimo'}
+              </button>
+              <button
+                className="btn"
+                onClick={() => onRefreshLogHistory(selectedResource.uuid)}
+                disabled={isLoadingApplicationLogHistory}
+              >
+                {isLoadingApplicationLogHistory ? 'Atualizando...' : 'Atualizar historico'}
+              </button>
+            </div>
           </div>
           {applicationLogMeta && (
             <div className="log-meta">
@@ -939,6 +970,26 @@ function InspectorPanel({
           <pre className="log-preview">
             {applicationLogs || 'Nenhum log retornado para a ultima execucao.'}
           </pre>
+
+          <div className="section-title">Historico (ultimos 5 deploys)</div>
+          <div className="history-list">
+            {applicationLogHistory.map((entry, index) => (
+              <details key={`${entry.deployment?.id || index}-${index}`} className="history-item">
+                <summary>
+                  {(entry.deployment?.status || 'unknown').toUpperCase()} -{' '}
+                  {entry.deployment?.created_at
+                    ? new Date(entry.deployment.created_at).toLocaleString('pt-BR')
+                    : 'sem data'}
+                </summary>
+                <pre className="log-preview small">
+                  {entry.logs || 'Sem logs para este deployment.'}
+                </pre>
+              </details>
+            ))}
+            {!isLoadingApplicationLogHistory && applicationLogHistory.length === 0 && (
+              <div className="empty-box small">Sem historico de logs para esta aplicacao.</div>
+            )}
+          </div>
         </div>
       )}
 

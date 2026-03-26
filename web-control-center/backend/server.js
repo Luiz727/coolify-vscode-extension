@@ -467,6 +467,68 @@ app.get('/api/logs/applications/:uuid/latest', async (req, res) => {
   }
 });
 
+app.get('/api/logs/applications/:uuid/history', async (req, res) => {
+  const { uuid } = req.params;
+  const takeRaw = Number(req.query.take || 5);
+  const take = Number.isFinite(takeRaw) ? Math.max(1, Math.min(20, takeRaw)) : 5;
+
+  try {
+    const deploymentsPayload = await callCoolify(
+      `/deployments/applications/${encodeURIComponent(uuid)}?skip=0&take=${take}`
+    );
+
+    const deployments = Array.isArray(deploymentsPayload) ? deploymentsPayload : [];
+    if (deployments.length === 0) {
+      res.json({ entries: [] });
+      return;
+    }
+
+    const entries = await Promise.all(
+      deployments.map(async (item) => {
+        const deploymentId = item.id || item.deployment_uuid;
+        if (!deploymentId) {
+          return {
+            deployment: {
+              id: item.id || null,
+              deployment_uuid: item.deployment_uuid || null,
+              status: item.status || 'unknown',
+              created_at: item.created_at || null,
+            },
+            logs: '',
+          };
+        }
+
+        try {
+          const details = await callCoolify(`/deployments/${encodeURIComponent(String(deploymentId))}`);
+          return {
+            deployment: {
+              id: item.id || null,
+              deployment_uuid: item.deployment_uuid || null,
+              status: item.status || 'unknown',
+              created_at: item.created_at || null,
+            },
+            logs: typeof details?.logs === 'string' ? details.logs : '',
+          };
+        } catch {
+          return {
+            deployment: {
+              id: item.id || null,
+              deployment_uuid: item.deployment_uuid || null,
+              status: item.status || 'unknown',
+              created_at: item.created_at || null,
+            },
+            logs: '',
+          };
+        }
+      })
+    );
+
+    res.json({ entries });
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Control Center backend running on port ${PORT}`);
 });
