@@ -375,8 +375,7 @@ export default function App() {
       setAuthToken(payload.token || '');
       setActor(loginUser || actor || 'operator-web');
       setLoginPassword('');
-      await refresh();
-      await fetchAudit();
+      // refresh/fetchAudit serao acionados automaticamente quando authToken mudar.
     } catch (errorLogin) {
       setAuthError(errorLogin.message || 'Falha no login.');
     } finally {
