@@ -18,26 +18,87 @@
       body {
         font-family: var(--vscode-font-family);
         color: var(--vscode-foreground);
-        background: var(--vscode-sideBar-background);
+        background:
+          radial-gradient(circle at top right, var(--vscode-editorWidget-border) 0%, transparent 48%),
+          var(--vscode-sideBar-background);
         padding: 12px;
         display: flex;
         flex-direction: column;
         gap: 14px;
       }
 
-      .section {
+      .dashboard-header {
         display: flex;
-        flex-direction: column;
+        justify-content: space-between;
+        align-items: flex-start;
         gap: 10px;
-        background: var(--vscode-editor-background);
         border: 1px solid var(--vscode-widget-border);
         border-radius: var(--panel-radius);
-        padding: var(--panel-padding);
+        background: var(--vscode-editor-background);
+        padding: 10px 12px;
+      }
+
+      .dashboard-heading {
+        min-width: 0;
+      }
+
+      .dashboard-title {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.1px;
+        color: var(--vscode-foreground);
+      }
+
+      .dashboard-subtitle {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+      }
+
+      .dashboard-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .section {
+        --section-accent: var(--vscode-focusBorder);
+        display: flex;
+        flex-direction: column;
+        background: var(--vscode-editor-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-left: 3px solid var(--section-accent);
+        border-radius: var(--panel-radius);
+        overflow: hidden;
+      }
+
+      #applications-section {
+        --section-accent: var(--vscode-charts-blue);
+      }
+
+      #deployments-section {
+        --section-accent: var(--vscode-statusBarItem-warningBackground, var(--vscode-charts-yellow));
+      }
+
+      #services-section {
+        --section-accent: var(--vscode-charts-green);
+      }
+
+      #databases-section {
+        --section-accent: var(--vscode-charts-purple);
+      }
+
+      #projects-section {
+        --section-accent: var(--vscode-charts-orange);
       }
 
       .context-section {
+        padding: var(--panel-padding);
         gap: 8px;
         background: var(--vscode-sideBar-background);
+        border-left-color: var(--vscode-activityBarBadge-background);
       }
 
       .section-header {
@@ -47,6 +108,9 @@
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 8px;
+        border-bottom: 1px solid var(--vscode-widget-border);
+        background: var(--vscode-sideBar-background);
+        padding: 9px 12px;
       }
 
       .section-header h3 {
@@ -54,6 +118,17 @@
         font-size: 14px;
         font-weight: 600;
         color: var(--vscode-foreground);
+      }
+
+      .section-heading {
+        min-width: 0;
+      }
+
+      .section-subtitle {
+        margin: 3px 0 0;
+        font-size: 11px;
+        line-height: 1.35;
+        color: var(--vscode-descriptionForeground);
       }
 
       .section-title-group {
@@ -108,6 +183,7 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
+        padding: 10px 12px 12px;
       }
 
       .section-body.section-collapsed {
@@ -120,6 +196,10 @@
         gap: 8px;
         flex-wrap: wrap;
         margin-top: 0;
+        padding: 6px 8px;
+        border-radius: var(--control-radius);
+        border: 1px dashed var(--vscode-widget-border);
+        background: var(--vscode-sideBar-background);
       }
 
       .favorite-toggle {
@@ -171,7 +251,7 @@
 
       .refresh-button {
         padding: 5px 10px;
-        background: transparent;
+        background: var(--vscode-button-background);
         color: var(--vscode-button-foreground);
         border: 1px solid var(--vscode-button-background);
         border-radius: var(--control-radius);
@@ -181,7 +261,7 @@
       }
 
       .refresh-button:hover {
-        background: var(--vscode-button-background);
+        background: var(--vscode-button-hoverBackground);
       }
 
       .cards-container {
@@ -216,7 +296,37 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+
+      .application-card .card-main {
         padding-right: 28px;
+      }
+
+      .card-header-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px 10px;
+        border-radius: calc(var(--card-radius) - 3px);
+        border: 1px solid var(--vscode-widget-border);
+        background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+      }
+
+      .card-meta-block {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: calc(var(--card-radius) - 3px);
+        border: 1px dashed var(--vscode-widget-border);
+        background: var(--vscode-editor-background);
+      }
+
+      .card-detail-block {
+        padding: 8px 10px;
+        border-radius: calc(var(--card-radius) - 3px);
+        border: 1px dashed var(--vscode-widget-border);
+        background: var(--vscode-editor-background);
       }
 
       .favorite-button {
@@ -269,12 +379,33 @@
 
       .card-footer {
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: space-between;
-        align-items: center;
+        flex-direction: column;
+        gap: 6px;
+        align-items: stretch;
         padding-top: 12px;
         border-top: 1px solid var(--vscode-widget-border);
+      }
+
+      .card-status-block {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 6px 8px;
+        border-radius: var(--control-radius);
+        border: 1px solid var(--vscode-widget-border);
+        background: var(--vscode-editor-background);
+      }
+
+      .card-actions-block {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 6px 8px;
+        border-radius: var(--control-radius);
+        border: 1px solid var(--vscode-widget-border);
+        background: var(--vscode-sideBar-background);
       }
 
       .label {
@@ -429,8 +560,11 @@
         display: flex;
         flex-direction: column;
         gap: 6px;
-        border-top: 1px dashed var(--vscode-widget-border);
-        padding-top: 10px;
+      }
+
+      .card-detail-block .env-panel {
+        border-top: 0;
+        padding-top: 0;
       }
 
       .env-row {
@@ -459,9 +593,7 @@
       }
 
       .deployment-log-panel {
-        border-top: 1px dashed var(--vscode-widget-border);
-        padding-top: 10px;
-        margin-top: 2px;
+        margin-top: 0;
       }
 
       .deployment-log-content {
@@ -570,6 +702,17 @@
         }
       }
 
+      @media (max-width: 560px) {
+        .dashboard-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .dashboard-actions {
+          justify-content: flex-start;
+        }
+      }
+
       @keyframes spin {
         to {
           transform: rotate(360deg);
@@ -599,6 +742,20 @@
     </style>
   </head>
   <body>
+    <div class="dashboard-header">
+      <div class="dashboard-heading">
+        <h2 id="dashboard-title" class="dashboard-title">Control Center</h2>
+        <p id="dashboard-subtitle" class="dashboard-subtitle">
+          Modular view with clear blocks for operations and status tracking.
+        </p>
+      </div>
+      <div class="dashboard-actions">
+        <button id="refresh-button" class="refresh-button" type="button">
+          <span id="refresh-label">↻ Force Refresh</span>
+        </button>
+      </div>
+    </div>
+
     <div id="ui-state-banner" class="ui-state-banner" role="status" aria-live="polite"></div>
     <div class="section context-section">
       <div class="filter-row">
@@ -613,9 +770,12 @@
 
     <div class="section" id="applications-section">
       <div class="section-header">
-        <div class="section-title-group">
-          <h3 id="applications-title">Applications</h3>
-          <span id="applications-count" class="section-count">0</span>
+        <div class="section-heading">
+          <div class="section-title-group">
+            <h3 id="applications-title">Applications</h3>
+            <span id="applications-count" class="section-count">0</span>
+          </div>
+          <p id="applications-subtitle" class="section-subtitle">Lifecycle and deployment controls.</p>
         </div>
         <div class="header-controls">
           <button
@@ -668,9 +828,12 @@
 
     <div class="section" id="deployments-section">
       <div class="section-header">
-        <div class="section-title-group">
-          <h3 id="deployments-title">Active Deployments</h3>
-          <span id="deployments-count" class="section-count">0</span>
+        <div class="section-heading">
+          <div class="section-title-group">
+            <h3 id="deployments-title">Active Deployments</h3>
+            <span id="deployments-count" class="section-count">0</span>
+          </div>
+          <p id="deployments-subtitle" class="section-subtitle">Current rollout timeline and logs.</p>
         </div>
         <div class="header-controls">
           <button
@@ -709,9 +872,12 @@
 
     <div class="section" id="services-section">
       <div class="section-header">
-        <div class="section-title-group">
-          <h3 id="services-title">Services</h3>
-          <span id="services-count" class="section-count">0</span>
+        <div class="section-heading">
+          <div class="section-title-group">
+            <h3 id="services-title">Services</h3>
+            <span id="services-count" class="section-count">0</span>
+          </div>
+          <p id="services-subtitle" class="section-subtitle">Runtime dependencies and supporting components.</p>
         </div>
         <div class="header-controls">
           <button
@@ -737,9 +903,12 @@
 
     <div class="section" id="databases-section">
       <div class="section-header">
-        <div class="section-title-group">
-          <h3 id="databases-title">Databases</h3>
-          <span id="databases-count" class="section-count">0</span>
+        <div class="section-heading">
+          <div class="section-title-group">
+            <h3 id="databases-title">Databases</h3>
+            <span id="databases-count" class="section-count">0</span>
+          </div>
+          <p id="databases-subtitle" class="section-subtitle">Persistence layer with backup and restore actions.</p>
         </div>
         <div class="header-controls">
           <button
@@ -765,9 +934,12 @@
 
     <div class="section" id="projects-section">
       <div class="section-header">
-        <div class="section-title-group">
-          <h3 id="projects-title">Projects</h3>
-          <span id="projects-count" class="section-count">0</span>
+        <div class="section-heading">
+          <div class="section-title-group">
+            <h3 id="projects-title">Projects</h3>
+            <span id="projects-count" class="section-count">0</span>
+          </div>
+          <p id="projects-subtitle" class="section-subtitle">Logical grouping and workspace ownership.</p>
         </div>
         <div class="header-controls">
           <button
@@ -796,18 +968,26 @@
       const uiLanguage = '${uiLanguage}' === 'pt-BR' ? 'pt-BR' : 'en';
       const i18n = {
         en: {
+          dashboardTitle: 'Control Center',
+          dashboardSubtitle:
+            'Modular view with clear blocks for operations and status tracking.',
           applicationsTitle: 'Applications',
           refreshLabel: '↻ Force Refresh',
+          applicationsSubtitle: 'Lifecycle and deployment controls.',
           filterLabel: 'Container status:',
           filterAll: 'All containers',
           loadingApplications: 'Loading applications...',
           deploymentsTitle: 'Active Deployments',
+          deploymentsSubtitle: 'Current rollout timeline and logs.',
           loadingDeployments: 'Loading deployments...',
           servicesTitle: 'Services',
+          servicesSubtitle: 'Runtime dependencies and supporting components.',
           loadingServices: 'Loading services...',
           databasesTitle: 'Databases',
+          databasesSubtitle: 'Persistence layer with backup and restore actions.',
           loadingDatabases: 'Loading databases...',
           projectsTitle: 'Projects',
+          projectsSubtitle: 'Logical grouping and workspace ownership.',
           loadingProjects: 'Loading projects...',
           noApplications: 'No applications found',
           noDeployments: 'No active deployments',
@@ -818,6 +998,8 @@
           unknown: 'Unknown',
           noUrlConfigured: 'No URL configured',
           notAvailable: 'N/A',
+          resourceId: 'ID:',
+          descriptionLabel: 'Description:',
           repository: 'Repository:',
           branch: 'Branch:',
           lastUpdated: 'Last Updated:',
@@ -877,18 +1059,26 @@
           uiStateUnconfigured: 'Extension is not configured.',
         },
         'pt-BR': {
+          dashboardTitle: 'Central de Controle',
+          dashboardSubtitle:
+            'Visão modular com blocos claros para operação e acompanhamento de status.',
           applicationsTitle: 'Aplicações',
           refreshLabel: '↻ Atualizar',
+          applicationsSubtitle: 'Controles de ciclo de vida e deploy.',
           filterLabel: 'Status do container:',
           filterAll: 'Todos os containers',
           loadingApplications: 'Carregando aplicações...',
           deploymentsTitle: 'Deployments ativos',
+          deploymentsSubtitle: 'Linha do tempo de rollout e logs atuais.',
           loadingDeployments: 'Carregando deployments...',
           servicesTitle: 'Serviços',
+          servicesSubtitle: 'Dependências em execução e componentes de apoio.',
           loadingServices: 'Carregando serviços...',
           databasesTitle: 'Bancos de dados',
+          databasesSubtitle: 'Camada de persistência com ações de backup e restore.',
           loadingDatabases: 'Carregando bancos de dados...',
           projectsTitle: 'Projetos',
+          projectsSubtitle: 'Agrupamento lógico e escopo de ownership.',
           loadingProjects: 'Carregando projetos...',
           noApplications: 'Nenhuma aplicação encontrada',
           noDeployments: 'Nenhum deployment ativo',
@@ -899,6 +1089,8 @@
           unknown: 'Desconhecido',
           noUrlConfigured: 'Sem URL configurada',
           notAvailable: 'N/D',
+          resourceId: 'ID:',
+          descriptionLabel: 'Descrição:',
           repository: 'Repositório:',
           branch: 'Branch:',
           lastUpdated: 'Última atualização:',
@@ -966,17 +1158,24 @@
 
       function applyStaticTranslations() {
         const translationsMap = {
+          'dashboard-title': t('dashboardTitle'),
+          'dashboard-subtitle': t('dashboardSubtitle'),
           'applications-title': t('applicationsTitle'),
+          'applications-subtitle': t('applicationsSubtitle'),
           'refresh-label': t('refreshLabel'),
           'filter-label': t('filterLabel'),
           'loading-applications': t('loadingApplications'),
           'deployments-title': t('deploymentsTitle'),
+          'deployments-subtitle': t('deploymentsSubtitle'),
           'loading-deployments': t('loadingDeployments'),
           'services-title': t('servicesTitle'),
+          'services-subtitle': t('servicesSubtitle'),
           'loading-services': t('loadingServices'),
           'databases-title': t('databasesTitle'),
+          'databases-subtitle': t('databasesSubtitle'),
           'loading-databases': t('loadingDatabases'),
           'projects-title': t('projectsTitle'),
+          'projects-subtitle': t('projectsSubtitle'),
           'loading-projects': t('loadingProjects'),
           'favorites-only-label': t('favoritesOnly'),
           'env-actions-label': t('envActionsLabel'),
@@ -1998,6 +2197,7 @@
         const parsedStatus = parseStatus(app.status);
         const card = createElement('div', 'card application-card');
         const cardMain = createElement('div', 'card-main');
+        const headerBlock = createElement('div', 'card-header-block');
 
         const isFavorite = favoriteApplicationIds.has(app.id);
         const favoriteButton = createElement(
@@ -2011,13 +2211,16 @@
         favoriteButton.addEventListener('click', () => toggleFavorite(app.id));
         card.appendChild(favoriteButton);
 
-        cardMain.appendChild(
+        headerBlock.appendChild(
           createElement('div', 'card-title', app.name || t('unknown'))
         );
-        cardMain.appendChild(
+        headerBlock.appendChild(
           createElement('div', 'card-subtitle', app.fqdn || t('noUrlConfigured'))
         );
 
+        cardMain.appendChild(headerBlock);
+
+        const cardMeta = createElement('div', 'card-meta-block');
         const cardContent = createElement('div', 'card-content');
         const fields = [
           [t('repository'), app.git_repository || t('notAvailable')],
@@ -2030,9 +2233,11 @@
           cardContent.appendChild(createElement('span', 'value', value));
         });
 
-        cardMain.appendChild(cardContent);
+        cardMeta.appendChild(cardContent);
+        cardMain.appendChild(cardMeta);
 
         if (showEnvActions && expandedEnvPanels.has(app.id)) {
+          const envBlock = createElement('div', 'card-detail-block');
           const envPanel = createElement('div', 'env-panel');
 
           if (loadingEnvPanels.has(app.id)) {
@@ -2076,10 +2281,12 @@
             }
           }
 
-          cardMain.appendChild(envPanel);
+          envBlock.appendChild(envPanel);
+          cardMain.appendChild(envBlock);
         }
 
         const cardFooter = createElement('div', 'card-footer');
+        const statusBlock = createElement('div', 'card-status-block');
         const statusGroup = createElement('div', 'status-group');
         statusGroup.appendChild(
           createElement('span', 'status', parsedStatus.containerStatus)
@@ -2092,7 +2299,8 @@
         );
         statusGroup.appendChild(healthBadge);
 
-        cardFooter.appendChild(statusGroup);
+        statusBlock.appendChild(statusGroup);
+        cardFooter.appendChild(statusBlock);
 
         const buttonGroup = createElement('div', 'button-group');
 
@@ -2154,7 +2362,9 @@
           buttonGroup.appendChild(addEnvButton);
         }
 
-        cardFooter.appendChild(buttonGroup);
+        const actionsBlock = createElement('div', 'card-actions-block');
+        actionsBlock.appendChild(buttonGroup);
+        cardFooter.appendChild(actionsBlock);
 
         card.appendChild(cardMain);
         card.appendChild(cardFooter);
@@ -2164,22 +2374,28 @@
       function createDeploymentCard(deployment) {
         const card = createElement('div', 'card deployment-card');
         const cardMain = createElement('div', 'card-main');
+        const headerBlock = createElement('div', 'card-header-block');
 
-        cardMain.appendChild(
+        headerBlock.appendChild(
           createElement('div', 'card-title', deployment.applicationName || t('unknown'))
         );
-        cardMain.appendChild(
+        headerBlock.appendChild(
           createElement(
             'div',
             'deployment-time',
             t('started') + ' ' + (deployment.startedAt || '')
           )
         );
-        cardMain.appendChild(
+        cardMain.appendChild(headerBlock);
+
+        const cardMeta = createElement('div', 'card-meta-block');
+        cardMeta.appendChild(
           createElement('div', 'commit-message', deployment.commit || t('noCommitDetails'))
         );
+        cardMain.appendChild(cardMeta);
 
         if (expandedDeploymentLogPanels.has(deployment.id)) {
+          const logsBlock = createElement('div', 'card-detail-block');
           const logsPanel = createElement('div', 'deployment-log-panel');
 
           if (loadingDeploymentLogPanels.has(deployment.id)) {
@@ -2199,18 +2415,21 @@
             }
           }
 
-          cardMain.appendChild(logsPanel);
+          logsBlock.appendChild(logsPanel);
+          cardMain.appendChild(logsBlock);
         }
 
         const cardFooter = createElement('div', 'card-footer');
+        const statusBlock = createElement('div', 'card-status-block');
         const deploymentStatusClass = getDeploymentStatusClass(deployment.status);
-        cardFooter.appendChild(
+        statusBlock.appendChild(
           createElement(
             'span',
             'status deployment-status ' + deploymentStatusClass,
             deployment.status || 'running'
           )
         );
+        cardFooter.appendChild(statusBlock);
 
         const buttonGroup = createElement('div', 'button-group');
 
@@ -2257,7 +2476,9 @@
         );
         buttonGroup.appendChild(cancelButton);
 
-        cardFooter.appendChild(buttonGroup);
+        const actionsBlock = createElement('div', 'card-actions-block');
+        actionsBlock.appendChild(buttonGroup);
+        cardFooter.appendChild(actionsBlock);
 
         card.appendChild(cardMain);
         card.appendChild(cardFooter);
@@ -2267,18 +2488,34 @@
       function createServiceCard(service) {
         const card = createElement('div', 'card service-card');
         const cardMain = createElement('div', 'card-main');
+        const headerBlock = createElement('div', 'card-header-block');
 
-        cardMain.appendChild(
+        headerBlock.appendChild(
           createElement('div', 'card-title', service.name || t('unknown'))
         );
 
+        cardMain.appendChild(headerBlock);
+
+        const cardMeta = createElement('div', 'card-meta-block');
+        const cardContent = createElement('div', 'card-content');
+        const fields = [
+          [t('resourceId'), service.id || t('notAvailable')],
+        ];
+
         if (service.description) {
-          cardMain.appendChild(
-            createElement('div', 'card-subtitle', service.description)
-          );
+          fields.push([t('descriptionLabel'), service.description]);
         }
 
+        fields.forEach(([label, value]) => {
+          cardContent.appendChild(createElement('span', 'label', label));
+          cardContent.appendChild(createElement('span', 'value', String(value || t('notAvailable'))));
+        });
+
+        cardMeta.appendChild(cardContent);
+        cardMain.appendChild(cardMeta);
+
         if (expandedServicePanels.has(service.id)) {
+          const detailsBlock = createElement('div', 'card-detail-block');
           const detailsPanel = createElement('div', 'env-panel');
 
           if (loadingServicePanels.has(service.id)) {
@@ -2307,13 +2544,16 @@
             }
           }
 
-          cardMain.appendChild(detailsPanel);
+          detailsBlock.appendChild(detailsPanel);
+          cardMain.appendChild(detailsBlock);
         }
 
         const cardFooter = createElement('div', 'card-footer');
-        cardFooter.appendChild(
+        const statusBlock = createElement('div', 'card-status-block');
+        statusBlock.appendChild(
           createElement('span', 'status', String(service.status || 'unknown'))
         );
+        cardFooter.appendChild(statusBlock);
 
         const buttonGroup = createElement('div', 'button-group');
 
@@ -2337,7 +2577,9 @@
         detailsButton.addEventListener('click', () => listServiceDetails(service.id));
         buttonGroup.appendChild(detailsButton);
 
-        cardFooter.appendChild(buttonGroup);
+        const actionsBlock = createElement('div', 'card-actions-block');
+        actionsBlock.appendChild(buttonGroup);
+        cardFooter.appendChild(actionsBlock);
 
         card.appendChild(cardMain);
         card.appendChild(cardFooter);
@@ -2347,18 +2589,34 @@
       function createDatabaseCard(database) {
         const card = createElement('div', 'card database-card');
         const cardMain = createElement('div', 'card-main');
+        const headerBlock = createElement('div', 'card-header-block');
 
-        cardMain.appendChild(
+        headerBlock.appendChild(
           createElement('div', 'card-title', database.name || t('unknown'))
         );
 
+        cardMain.appendChild(headerBlock);
+
+        const cardMeta = createElement('div', 'card-meta-block');
+        const cardContent = createElement('div', 'card-content');
+        const fields = [
+          [t('resourceId'), database.id || t('notAvailable')],
+        ];
+
         if (database.description) {
-          cardMain.appendChild(
-            createElement('div', 'card-subtitle', database.description)
-          );
+          fields.push([t('descriptionLabel'), database.description]);
         }
 
+        fields.forEach(([label, value]) => {
+          cardContent.appendChild(createElement('span', 'label', label));
+          cardContent.appendChild(createElement('span', 'value', String(value || t('notAvailable'))));
+        });
+
+        cardMeta.appendChild(cardContent);
+        cardMain.appendChild(cardMeta);
+
         if (expandedDatabasePanels.has(database.id)) {
+          const detailsBlock = createElement('div', 'card-detail-block');
           const detailsPanel = createElement('div', 'env-panel');
 
           if (loadingDatabasePanels.has(database.id)) {
@@ -2387,10 +2645,12 @@
             }
           }
 
-          cardMain.appendChild(detailsPanel);
+          detailsBlock.appendChild(detailsPanel);
+          cardMain.appendChild(detailsBlock);
         }
 
         if (expandedDatabaseBackupPanels.has(database.id)) {
+          const backupsBlock = createElement('div', 'card-detail-block');
           const backupsPanel = createElement('div', 'env-panel');
 
           if (loadingDatabaseBackupPanels.has(database.id)) {
@@ -2435,13 +2695,16 @@
             }
           }
 
-          cardMain.appendChild(backupsPanel);
+          backupsBlock.appendChild(backupsPanel);
+          cardMain.appendChild(backupsBlock);
         }
 
         const cardFooter = createElement('div', 'card-footer');
-        cardFooter.appendChild(
+        const statusBlock = createElement('div', 'card-status-block');
+        statusBlock.appendChild(
           createElement('span', 'status', String(database.status || 'unknown'))
         );
+        cardFooter.appendChild(statusBlock);
 
         const buttonGroup = createElement('div', 'button-group');
 
@@ -2479,7 +2742,9 @@
         createBackupButton.addEventListener('click', () => createDatabaseBackup(database.id));
         buttonGroup.appendChild(createBackupButton);
 
-        cardFooter.appendChild(buttonGroup);
+        const actionsBlock = createElement('div', 'card-actions-block');
+        actionsBlock.appendChild(buttonGroup);
+        cardFooter.appendChild(actionsBlock);
 
         card.appendChild(cardMain);
         card.appendChild(cardFooter);
@@ -2489,18 +2754,34 @@
       function createProjectCard(project) {
         const card = createElement('div', 'card project-card');
         const cardMain = createElement('div', 'card-main');
+        const headerBlock = createElement('div', 'card-header-block');
 
-        cardMain.appendChild(
+        headerBlock.appendChild(
           createElement('div', 'card-title', project.name || t('unknown'))
         );
 
+        cardMain.appendChild(headerBlock);
+
+        const cardMeta = createElement('div', 'card-meta-block');
+        const cardContent = createElement('div', 'card-content');
+        const fields = [
+          [t('resourceId'), project.id || t('notAvailable')],
+        ];
+
         if (project.description) {
-          cardMain.appendChild(
-            createElement('div', 'card-subtitle', project.description)
-          );
+          fields.push([t('descriptionLabel'), project.description]);
         }
 
+        fields.forEach(([label, value]) => {
+          cardContent.appendChild(createElement('span', 'label', label));
+          cardContent.appendChild(createElement('span', 'value', String(value || t('notAvailable'))));
+        });
+
+        cardMeta.appendChild(cardContent);
+        cardMain.appendChild(cardMeta);
+
         if (expandedProjectPanels.has(project.id)) {
+          const detailsBlock = createElement('div', 'card-detail-block');
           const detailsPanel = createElement('div', 'env-panel');
 
           if (loadingProjectPanels.has(project.id)) {
@@ -2529,7 +2810,8 @@
             }
           }
 
-          cardMain.appendChild(detailsPanel);
+          detailsBlock.appendChild(detailsPanel);
+          cardMain.appendChild(detailsBlock);
         }
 
         const cardFooter = createElement('div', 'card-footer');
@@ -2540,7 +2822,9 @@
         detailsButton.addEventListener('click', () => listProjectDetails(project.id));
         buttonGroup.appendChild(detailsButton);
 
-        cardFooter.appendChild(buttonGroup);
+        const actionsBlock = createElement('div', 'card-actions-block');
+        actionsBlock.appendChild(buttonGroup);
+        cardFooter.appendChild(actionsBlock);
 
         card.appendChild(cardMain);
         card.appendChild(cardFooter);
