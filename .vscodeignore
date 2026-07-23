@@ -1,16 +1,37 @@
+# The published extension needs only dist/, public/ and the root metadata.
+# Everything else — source, tests, the web Control Center, docs — is excluded
+# so the .vsix stays small. Without this the packager pulled in
+# web-control-center/**/node_modules (30+ MB) and failed.
+
 .vscode/**
 .vscode-test/**
+.vscode-test.mjs
 out/**
 node_modules/**
 src/**
-.gitignore
-.yarnrc
+scripts/**
+docs/**
+coverage/**
+.anexos/**
+
+# The web Control Center is a separate product, not part of the extension.
+web-control-center/**
+
+# Build config and tooling.
 esbuild.js
+.gitignore
+.npmrc
+.yarnrc
 vsc-extension-quickstart.md
+EXTENSION_IMPROVEMENTS_MAP.md
+docker-compose.control-center.yml
+docker-compose.control-center.dev.yml
+.env.control-center.example
 **/tsconfig.json
 **/eslint.config.mjs
 **/*.map
 **/*.ts
 **/.vscode-test.*
-.anexos/**
-coverage/**
+
+# Don't ship previously built packages inside the new one.
+*.vsix
