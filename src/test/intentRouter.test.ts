@@ -33,6 +33,60 @@ suite('Chat intent routing', () => {
     }
   });
 
+  /**
+   * "para" is the Portuguese preposition far more often than the imperative of
+   * "parar". Treating it as a stop verb turned every "deploy para producao"
+   * into a proposal to stop the application.
+   */
+  test('the preposition "para" is not read as the stop verb', () => {
+    const deployPhrases = [
+      'fazer deploy para producao',
+      'deploy para a app "api"',
+      'publicar para o ambiente de staging',
+      'rodar deploy para o site',
+    ];
+
+    for (const prompt of deployPhrases) {
+      const intent = routeIntent(prompt);
+      assert.notStrictEqual(
+        intent.kind,
+        'lifecycle',
+        `"${prompt}" nao pode virar acao de ciclo de vida (obtido: ${JSON.stringify(intent)})`
+      );
+      assert.strictEqual(intent.kind, 'deploy');
+    }
+  });
+
+  test('stop verbs still work', () => {
+    const stopPhrases = ['parar a app "api"', 'pare o banco "pg"', 'stop na app "api"'];
+    for (const prompt of stopPhrases) {
+      const intent = routeIntent(prompt);
+      assert.strictEqual(intent.kind, 'lifecycle');
+      assert.strictEqual(
+        intent.kind === 'lifecycle' ? intent.action : undefined,
+        'stop'
+      );
+    }
+  });
+
+  /** Substring matching turned "login" and "catalogo" into log requests. */
+  test('words merely containing "log" are not log requests', () => {
+    assert.notStrictEqual(routeIntent('quero fazer login').kind, 'logs');
+    assert.notStrictEqual(routeIntent('abrir o catalogo').kind, 'logs');
+    assert.strictEqual(routeIntent('logs da app "api"').kind, 'logs');
+    assert.strictEqual(routeIntent('ver o log da app "api"').kind, 'logs');
+  });
+
+  /**
+   * "saude" alone used to mean a connectivity check, swallowing questions about
+   * a specific resource.
+   */
+  test('health check is distinguished from a resource health question', () => {
+    assert.strictEqual(routeIntent('health check coolify').kind, 'health');
+    assert.strictEqual(routeIntent('testar conectividade').kind, 'health');
+    assert.strictEqual(routeIntent('qual a saude do banco "pg"').kind, 'status');
+  });
+
   test('explicit deploy verb still routes to deploy', () => {
     const deployPrompts = [
       'deploy da app "api"',

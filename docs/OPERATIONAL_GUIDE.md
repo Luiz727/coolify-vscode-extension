@@ -173,6 +173,10 @@ These are limitations of the Coolify API itself, not of this extension:
 - **`/databases/{uuid}/backups` returns backup *schedules*, not backup files.**
   Actual runs live under `/backups/{scheduled_backup_uuid}/executions`, and
   creating a schedule requires `frequency`.
+- **`PATCH /envs/bulk` is documented as "update multiple envs".** It is used for
+  updates only; new keys are created one by one through `POST /envs`. Routing
+  creations through the bulk endpoint risked losing a brand-new variable
+  silently, which is worse than a few extra requests.
 
 ## 6. Restoring a database backup
 
@@ -189,7 +193,27 @@ the server; the extension deliberately does not offer a button that cannot work.
 
 Always take a fresh backup before restoring an older one.
 
-## 7. Scope and Non-goals (current release line)
+## 7. Polling cadence and cost
+
+The sidebar refreshes every 15s, but not everything is re-read on every cycle —
+the cost of a cycle must not grow with the size of the fleet.
+
+| Data | Cadence | Cost |
+|---|---|---|
+| Applications, services, databases | every cycle | 3 requests |
+| Running deployments | every cycle | 1 request |
+| Deployment history (per application) | 5 min, **plus immediately whenever a deployment finishes** | N requests |
+| Projects, servers | 60s | 2 requests |
+
+The "deployment finished" trigger is what keeps the history correct without
+paying for it every cycle: a deployment leaving the running list means the
+history is stale right now, so it is re-read on that event instead of on a timer.
+
+Measured on a 20-application fleet: **22 requests/min**, against 60/min for the
+original 5s × 5 endpoints — a 63% reduction. Auto-refresh also pauses when the
+panel is not visible and backs off exponentially while the API is failing.
+
+## 8. Scope and Non-goals (current release line)
 
 Optimized for deployment-centric operations inside VS Code. Resource **deletion**
 and team/organization management stay in the Coolify UI on purpose: they are

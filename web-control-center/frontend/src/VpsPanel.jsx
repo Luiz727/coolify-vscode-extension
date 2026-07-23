@@ -117,7 +117,11 @@ function ConfirmVpsDialog({ request, onCancel, onConfirm }) {
   const [acknowledged, setAcknowledged] = useState(false);
 
   const hostnameMatches = hostname.trim() === request.vm.hostname;
-  const canConfirm = hostnameMatches && (!request.irreversible || acknowledged);
+  // The blast radius is the whole point of this dialog: confirming while it is
+  // still loading would let the operator approve without seeing what falls.
+  const blastRadiusReady = request.blastRadius !== null;
+  const canConfirm =
+    hostnameMatches && blastRadiusReady && (!request.irreversible || acknowledged);
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">

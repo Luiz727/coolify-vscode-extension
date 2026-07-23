@@ -29,6 +29,7 @@ import {
   correlateServersToVms,
   createHostingerClient,
   evaluateAlerts,
+  flattenMetricSeries,
   isHostingerEnabled,
   HostingerError,
 } from './hostinger.js';
@@ -115,6 +116,12 @@ const ALERT_THRESHOLDS = {
 };
 
 const METRICS_POLL_MS = Number(process.env.VPS_METRICS_POLL_MS || 60000);
+const RESOURCE_STATE_POLL_MS = Number(process.env.HISTORY_POLL_MS || 30000);
+
+/** Cap on deployment-history lookups per cycle, to bound the request burst. */
+const MAX_APPS_PER_HISTORY_CYCLE = Number(
+  process.env.HISTORY_MAX_APPS_PER_CYCLE || 25
+);
 
 /** Latest VPS snapshot, refreshed by the collector below. */
 const vpsState = {
@@ -576,7 +583,14 @@ app.get('/api/vps/:vmId/metrics', requireHostinger, async (req, res) => {
     const metrics = await hostinger.getMetrics(vmId, {
       from: new Date(Date.now() - windowHours * 3600_000).toISOString(),
     });
-    res.json({ source: 'hostinger', windowHours, ...metrics });
+
+    // Same shape as the history source: the UI must not care where the
+    // series came from.
+    res.json({
+      source: 'hostinger',
+      windowHours,
+      series: flattenMetricSeries(metrics.series),
+    });
   } catch (error) {
     sendError(res, error);
   }
@@ -932,9 +946,76 @@ async function collectResourceStates() {
       ...resources.databases,
     ];
     await recordResourceStates(all);
+    await collectDeploymentHistory(resources.applications);
   } catch (error) {
     console.warn(`[history] coleta de estados falhou: ${error.message}`);
   }
+}
+
+/**
+ * Feeds deployment_history so /api/metrics can report success rate and
+ * duration. Without this the table stays empty and the metric is meaningless.
+ *
+ * Sequential with a small cap: this runs every 30s and must not burst the API.
+ */
+async function collectDeploymentHistory(applications) {
+  if (!isHistoryEnabled() || !Array.isArray(applications)) {
+    return;
+  }
+
+  for (const application of applications.slice(0, MAX_APPS_PER_HISTORY_CYCLE)) {
+    try {
+      const payload = await coolify.call(
+        `/deployments/applications/${encodeURIComponent(application.uuid)}?skip=0&take=5`
+      );
+
+      if (!Array.isArray(payload)) {
+        continue;
+      }
+
+      for (const item of payload) {
+        const uuid = item.deployment_uuid || (item.id ? String(item.id) : '');
+        if (!uuid) {
+          continue;
+        }
+
+        const startedAt = item.created_at || null;
+        const finishedAt = isTerminalDeploymentStatus(item.status)
+          ? item.updated_at || null
+          : null;
+
+        await recordDeployment({
+          uuid,
+          applicationUuid: application.uuid,
+          applicationName: application.name,
+          status: item.status || 'unknown',
+          commit: item.commit || null,
+          commitMessage: item.commit_message || null,
+          startedAt,
+          finishedAt,
+          durationMs:
+            startedAt && finishedAt
+              ? Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime())
+              : null,
+        });
+      }
+    } catch (error) {
+      console.warn(
+        `[history] deployments de ${application.uuid} falharam: ${error.message}`
+      );
+    }
+  }
+}
+
+function isTerminalDeploymentStatus(status) {
+  const value = String(status || '').toLowerCase();
+  return (
+    value.includes('finish') ||
+    value.includes('success') ||
+    value.includes('fail') ||
+    value.includes('error') ||
+    value.includes('cancel')
+  );
 }
 
 async function start() {
@@ -953,7 +1034,7 @@ async function start() {
 
   if (isHistoryEnabled()) {
     collectResourceStates();
-    setInterval(collectResourceStates, 30000).unref();
+    setInterval(collectResourceStates, RESOURCE_STATE_POLL_MS).unref();
     setInterval(pruneOldData, 6 * 60 * 60 * 1000).unref();
   }
 

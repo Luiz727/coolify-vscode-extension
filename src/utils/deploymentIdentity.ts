@@ -51,6 +51,42 @@ export function deploymentIdCandidates(
   return Array.from(candidates);
 }
 
+interface MergeableDeployment extends DeploymentIdentityLike {
+  created_at?: string;
+  isRunning?: boolean;
+}
+
+/**
+ * Merges live deployments with historical ones.
+ *
+ * A deployment can appear in both lists; the live entry wins so the UI can tell
+ * "running now" from "ran earlier". Results are newest-first.
+ */
+export function mergeDeployments<T extends MergeableDeployment>(
+  running: T[],
+  history: T[]
+): T[] {
+  const seen = new Set<string>();
+  const merged: T[] = [];
+
+  const push = (deployment: T, isRunning: boolean) => {
+    const key = resolveDeploymentId(deployment);
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    merged.push({ ...deployment, isRunning });
+  };
+
+  running.forEach((deployment) => push(deployment, true));
+  history.forEach((deployment) => push(deployment, false));
+
+  return merged.sort(
+    (a, b) =>
+      new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+  );
+}
+
 interface DeploymentLogEntry {
   output?: unknown;
   order?: unknown;

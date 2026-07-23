@@ -344,6 +344,47 @@ function latestValue(series) {
 }
 
 /**
+ * Flattens the per-metric series into unified rows.
+ *
+ * The history store and the provider must expose the SAME shape to the UI —
+ * `[{ t, cpu, ram, disk, netIn, netOut }]`. Returning the provider's
+ * `{ cpu: [...], ram: [...] }` map instead made the panel call `.map()` on an
+ * object and crash whenever the history store was disabled.
+ */
+export function flattenMetricSeries(series) {
+  if (!series || typeof series !== 'object') {
+    return [];
+  }
+
+  const byTimestamp = new Map();
+
+  const merge = (points, field) => {
+    if (!Array.isArray(points)) {
+      return;
+    }
+    for (const point of points) {
+      if (!point?.t) {
+        continue;
+      }
+      const key = String(point.t);
+      const row = byTimestamp.get(key) || { t: point.t };
+      row[field] = point.v;
+      byTimestamp.set(key, row);
+    }
+  };
+
+  merge(series.cpu, 'cpu');
+  merge(series.ram, 'ram');
+  merge(series.disk, 'disk');
+  merge(series.netIn, 'netIn');
+  merge(series.netOut, 'netOut');
+
+  return Array.from(byTimestamp.values()).sort(
+    (a, b) => new Date(a.t).getTime() - new Date(b.t).getTime()
+  );
+}
+
+/**
  * Links each Coolify server to the Hostinger VM hosting it, by IP.
  *
  * This is the join that turns two disconnected dashboards into one diagnosis:

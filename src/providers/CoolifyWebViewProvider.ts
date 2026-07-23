@@ -30,6 +30,7 @@ import {
 } from '../utils/uiStateMachine';
 import {
   formatTimestamp,
+  mergeDeployments,
   resolveDeploymentId,
 } from '../utils/deploymentIdentity';
 
@@ -312,6 +313,19 @@ const REFRESH_BACKOFF_MAX_MS = 120000;
 /** Recent deployments fetched per application to build the history view. */
 const DEPLOYMENT_HISTORY_PER_APP = 5;
 
+/**
+ * Deployment history costs one request per application, so it must not run on
+ * every cycle. Running deployments (a single request) stay live each refresh,
+ * and the history is additionally invalidated the moment a deployment finishes
+ * — so this ceiling only governs how long unchanged history is reused.
+ */
+const DEPLOYMENT_HISTORY_TTL_MS = 300000;
+
+/** Projects and servers change rarely; no reason to re-read them every cycle. */
+const SLOW_RESOURCE_TTL_MS = 60000;
+
+const DEPLOYMENT_HISTORY_CACHE_KEY = 'deployment-history';
+
 export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private refreshInterval?: NodeJS.Timeout;
@@ -332,6 +346,38 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     private configManager: ConfigurationManager
   ) {
     this.initializeConfigurationListener();
+  }
+
+  /**
+   * Time-based cache for data that does not need to be re-read every cycle.
+   *
+   * Fetching the deployment history of every application on each refresh made
+   * the request count grow with the number of applications — at 20 apps it
+   * cost more than the original 5s polling it was meant to replace.
+   */
+  private slowCache = new Map<string, { value: unknown; storedAt: number }>();
+
+  /** Used to detect the moment a deployment stops running (i.e. finishes). */
+  private previousRunningDeploymentIds = new Set<string>();
+
+  private async readCached<T>(
+    key: string,
+    ttlMs: number,
+    load: () => Promise<T>
+  ): Promise<T> {
+    const cached = this.slowCache.get(key);
+    if (cached && Date.now() - cached.storedAt < ttlMs) {
+      return cached.value as T;
+    }
+
+    const value = await load();
+    this.slowCache.set(key, { value, storedAt: Date.now() });
+    return value;
+  }
+
+  /** Forces the next refresh to re-read everything (used after a write). */
+  private invalidateSlowCache(): void {
+    this.slowCache.clear();
   }
 
   /**
@@ -530,17 +576,47 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         // /deployments alone only reports what is running right now, so the
         // panel would be empty on an idle system. Compose it with the recent
         // history of each application.
-        const deployments = await service.getDeploymentHistory(
-          applications.map((application) => application.uuid),
-          DEPLOYMENT_HISTORY_PER_APP
+        // Running deployments are one cheap request and must be live.
+        const running = await service.getRunningDeployments().catch((error) => {
+          logger.warn('Failed to list running deployments', error);
+          return [] as CoolifyDeployment[];
+        });
+
+        // A deployment leaving the running list means it just finished, so the
+        // history is stale right now regardless of its TTL. Refreshing on that
+        // signal keeps the list correct without paying for a fan-out every cycle.
+        const runningIds = new Set(running.map((item) => resolveDeploymentId(item)));
+        const finishedSinceLastCycle = [...this.previousRunningDeploymentIds].some(
+          (id) => !runningIds.has(id)
         );
+        if (finishedSinceLastCycle) {
+          this.slowCache.delete(DEPLOYMENT_HISTORY_CACHE_KEY);
+        }
+        this.previousRunningDeploymentIds = runningIds;
+
+        const applicationUuids = applications.map((application) => application.uuid);
+        const history = await this.readCached(
+          DEPLOYMENT_HISTORY_CACHE_KEY,
+          DEPLOYMENT_HISTORY_TTL_MS,
+          () =>
+            service.getDeploymentHistoryOnly(
+              applicationUuids,
+              DEPLOYMENT_HISTORY_PER_APP
+            )
+        );
+
+        const deployments = mergeDeployments(running, history);
 
         const [servicesResult, databasesResult, projectsResult, serversResult] =
           await Promise.allSettled([
             service.getServices(),
             service.getDatabases(),
-            service.getProjects(),
-            service.getServers(),
+            this.readCached('projects', SLOW_RESOURCE_TTL_MS, () =>
+              service.getProjects()
+            ),
+            this.readCached('servers', SLOW_RESOURCE_TTL_MS, () =>
+              service.getServers()
+            ),
           ]);
 
         const services =
@@ -673,6 +749,18 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
   public getLastRefreshErrorMessage(): string {
     return this.lastRefreshErrorMessage;
+  }
+
+  /**
+   * Refreshes without letting a display failure be mistaken for an action
+   * failure. Use after a write has already been accepted by the server.
+   */
+  private async refreshDataQuietly(): Promise<void> {
+    try {
+      await this.refreshData();
+    } catch (error) {
+      logger.warn('Refresh after action failed; the action itself succeeded', error);
+    }
   }
 
   private async transitionUiState(
@@ -871,7 +959,10 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       const service = await this.createService();
       await service.startDeployment(applicationId);
 
-      await this.refreshData();
+      // The deployment already succeeded at this point. A failing refresh is a
+      // display problem, not a deployment problem, so it must not surface as
+      // "Failed to start deployment".
+      await this.refreshDataQuietly();
 
       if (this.isViewValid()) {
         vscode.window.showInformationMessage('Deployment started successfully');
@@ -933,7 +1024,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         break;
     }
 
-    await this.refreshData();
+    await this.refreshDataQuietly();
     return message;
   }
 
@@ -975,7 +1066,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         break;
     }
 
-    await this.refreshData();
+    await this.refreshDataQuietly();
     return message;
   }
 
@@ -1005,7 +1096,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         break;
     }
 
-    await this.refreshData();
+    await this.refreshDataQuietly();
     return message;
   }
 
@@ -2097,7 +2188,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   ): Promise<string> {
     const service = await this.createService();
     const result = await service.createBackupSchedule(databaseId, request);
-    await this.refreshData();
+    await this.refreshDataQuietly();
     return result;
   }
 
@@ -2187,7 +2278,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
       const service = new CoolifyService(serverUrl, token);
       await service.cancelDeployment(deploymentId);
-      await this.refreshData();
+      await this.refreshDataQuietly();
     } catch (error) {
       logger.error('Failed to cancel deployment', error);
       throw error;

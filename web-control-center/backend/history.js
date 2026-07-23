@@ -263,8 +263,36 @@ export async function getManualLinks() {
  * so the time spent in "running" divided by the window is availability.
  */
 export async function getUptimeByResource(windowHours = 24) {
+  // Snapshots are written only on transitions, so a resource that stayed up
+  // all week has NO rows inside a 24h window. Seeding each resource with the
+  // state it carried into the window is what makes a stable resource report
+  // 100% instead of disappearing from the report entirely.
   const { rows } = await run(
-    `WITH ordered AS (
+    `WITH window_start AS (
+       SELECT (now() - ($1 || ' hours')::interval) AS ts
+     ),
+     carried AS (
+       SELECT DISTINCT ON (s.resource_uuid)
+              s.resource_uuid,
+              s.resource_name,
+              s.resource_type,
+              s.bucket,
+              (SELECT ts FROM window_start) AS observed_at
+       FROM resource_status_snapshot s
+       WHERE s.observed_at < (SELECT ts FROM window_start)
+       ORDER BY s.resource_uuid, s.observed_at DESC
+     ),
+     inside AS (
+       SELECT resource_uuid, resource_name, resource_type, bucket, observed_at
+       FROM resource_status_snapshot
+       WHERE observed_at >= (SELECT ts FROM window_start)
+     ),
+     combined AS (
+       SELECT * FROM carried
+       UNION ALL
+       SELECT * FROM inside
+     ),
+     ordered AS (
        SELECT resource_uuid,
               resource_name,
               resource_type,
@@ -273,8 +301,7 @@ export async function getUptimeByResource(windowHours = 24) {
               LEAD(observed_at, 1, now()) OVER (
                 PARTITION BY resource_uuid ORDER BY observed_at
               ) AS next_at
-       FROM resource_status_snapshot
-       WHERE observed_at >= now() - ($1 || ' hours')::interval
+       FROM combined
      )
      SELECT resource_uuid,
             MAX(resource_name) AS resource_name,

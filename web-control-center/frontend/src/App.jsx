@@ -208,6 +208,10 @@ function useControlCenterData({ authToken, onUnauthorized }) {
     }
 
     let cancelled = false;
+    // Guards against two concurrent poll chains: waking the tab used to start
+    // a new tick while the previous one was still awaiting, and both would
+    // then reschedule themselves.
+    let running = false;
 
     const scheduleNext = () => {
       if (cancelled) return;
@@ -216,19 +220,24 @@ function useControlCenterData({ authToken, onUnauthorized }) {
         failures === 0
           ? POLL_INTERVAL_MS
           : Math.min(POLL_INTERVAL_MS * 2 ** failures, POLL_BACKOFF_MAX_MS);
+      clearTimeout(timerRef.current);
       timerRef.current = setTimeout(tick, delay);
     };
 
     const tick = async () => {
-      if (cancelled) return;
+      if (cancelled || running) return;
       if (document.hidden) {
         scheduleNext();
         return;
       }
+
+      running = true;
       try {
         await refresh();
       } catch {
         // Error state is already surfaced; backoff handles the retry pace.
+      } finally {
+        running = false;
       }
       scheduleNext();
     };
@@ -236,7 +245,7 @@ function useControlCenterData({ authToken, onUnauthorized }) {
     tick();
 
     const onVisible = () => {
-      if (!document.hidden && !cancelled) {
+      if (!document.hidden && !cancelled && !running) {
         clearTimeout(timerRef.current);
         tick();
       }

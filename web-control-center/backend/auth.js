@@ -4,6 +4,8 @@ const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 8 * 60 * 60 * 1000);
 const LOGIN_MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS || 5);
 const LOGIN_LOCK_BASE_MS = Number(process.env.LOGIN_LOCK_BASE_MS || 30_000);
 const LOGIN_LOCK_MAX_MS = Number(process.env.LOGIN_LOCK_MAX_MS || 15 * 60 * 1000);
+/** How long an idle attempt counter is kept before being forgotten. */
+const LOGIN_ATTEMPT_TTL_MS = Number(process.env.LOGIN_ATTEMPT_TTL_MS || 60 * 60 * 1000);
 
 const SCRYPT_KEYLEN = 64;
 
@@ -75,7 +77,29 @@ export function getLoginLockRemainingMs(key) {
   return remaining > 0 ? remaining : 0;
 }
 
+/**
+ * Drops attempt counters that are no longer blocking.
+ *
+ * Without this the map grows one entry per distinct source IP forever, which a
+ * distributed login flood turns into unbounded memory use.
+ */
+function pruneLoginAttempts() {
+  const now = Date.now();
+  for (const [key, state] of loginAttempts.entries()) {
+    const expired =
+      state.lockedUntil > 0
+        ? state.lockedUntil <= now
+        : now - (state.lastAttemptAt || 0) > LOGIN_ATTEMPT_TTL_MS;
+
+    if (expired) {
+      loginAttempts.delete(key);
+    }
+  }
+}
+
 function registerFailedAttempt(key) {
+  pruneLoginAttempts();
+
   const state = getAttemptState(key);
   const count = state.count + 1;
 
@@ -89,7 +113,7 @@ function registerFailedAttempt(key) {
     lockedUntil = Date.now() + lockMs;
   }
 
-  loginAttempts.set(key, { count, lockedUntil });
+  loginAttempts.set(key, { count, lockedUntil, lastAttemptAt: Date.now() });
 }
 
 function clearAttempts(key) {

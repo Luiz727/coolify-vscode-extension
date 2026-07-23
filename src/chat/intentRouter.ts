@@ -44,11 +44,18 @@ function hasWord(text: string, words: string[]): boolean {
 }
 
 const LIST_WORDS = ['listar', 'liste', 'list', 'mostrar', 'mostre', 'exibir', 'quais'];
-const STATUS_WORDS = ['status', 'estado', 'saude do', 'situacao'];
+const STATUS_WORDS = ['status', 'estado', 'saude do', 'saude da', 'situacao'];
 const LOG_WORDS = ['log', 'logs'];
 const SERVER_WORDS = ['servidor', 'servidores', 'server', 'servers', 'vps', 'maquina'];
 const DEPLOYMENT_NOUNS = ['deployment', 'deployments', 'deploys', 'implantacoes'];
-const HEALTH_WORDS = ['health', 'saude', 'conexao', 'conectividade'];
+
+/**
+ * Health means "is Coolify itself reachable", so the phrases are specific.
+ * A bare "saude" would swallow "qual a saude do banco X", which is a status
+ * question about one resource, not a connectivity check.
+ */
+const HEALTH_PHRASES = ['health check', 'healthcheck', 'conectividade', 'testar conexao'];
+const HEALTH_TARGETS = ['coolify', 'conexao', 'servidor coolify'];
 const CONFIGURE_WORDS = ['configurar', 'configure', 'api key', 'token'];
 
 const SERVICE_WORDS = ['service', 'services', 'servico', 'servicos'];
@@ -70,13 +77,25 @@ function detectLifecycleAction(
   if (hasWord(text, ['restart', 'reiniciar', 'reinicie', 'reinicia'])) {
     return 'restart';
   }
-  if (hasWord(text, ['stop', 'parar', 'pare', 'para', 'desligar', 'desligue'])) {
+  // "para" is deliberately absent: it is overwhelmingly the Portuguese
+  // preposition, not the imperative of "parar". Including it made
+  // "fazer deploy para producao" resolve to a STOP.
+  if (hasWord(text, ['stop', 'parar', 'pare', 'desligar', 'desligue'])) {
     return 'stop';
   }
-  if (hasWord(text, ['start', 'iniciar', 'inicie', 'ligar', 'ligue', 'subir'])) {
+  if (hasWord(text, ['start', 'iniciar', 'inicie', 'ligar', 'ligue'])) {
     return 'start';
   }
   return undefined;
+}
+
+function looksLikeHealthCheck(text: string): boolean {
+  if (hasAny(text, HEALTH_PHRASES)) {
+    return true;
+  }
+  // "saude"/"health" alone only means connectivity when aimed at Coolify.
+  const mentionsHealth = hasWord(text, ['health', 'saude']);
+  return mentionsHealth && hasAny(text, HEALTH_TARGETS);
 }
 
 export function routeIntent(rawPrompt: string): ChatIntent {
@@ -90,13 +109,16 @@ export function routeIntent(rawPrompt: string): ChatIntent {
     return { kind: 'configure' };
   }
 
-  if (hasAny(text, HEALTH_WORDS)) {
+  if (looksLikeHealthCheck(text)) {
     return { kind: 'health' };
   }
 
-  const wantsList = hasAny(text, LIST_WORDS);
+  // Short synonyms go through whole-word matching so "verificar" is not a list.
+  const wantsList = hasAny(text, LIST_WORDS) || hasWord(text, ['ver', 'veja']);
   const mentionsDeploymentNoun = hasAny(text, DEPLOYMENT_NOUNS);
-  const mentionsLogs = hasAny(text, LOG_WORDS);
+  // Whole-word matching: substring matching turned "login" and "catalogo"
+  // into log requests.
+  const mentionsLogs = hasWord(text, LOG_WORDS);
   const mentionsServers = hasAny(text, SERVER_WORDS);
 
   // Reading intents are resolved first and unconditionally. "listar

@@ -1309,48 +1309,55 @@ export function activate(context: vscode.ExtensionContext) {
             cancellable: false,
           },
           async (progress) => {
-            // Creates + updates go in a single bulk request. Syncing a 50-key
-            // .env used to mean 50 sequential round trips to the VPS.
-            const bulkPayload = [
-              ...toCreate.map((item) => ({
+            const totalSteps =
+              toCreate.length +
+              (toUpdate.length > 0 ? 1 : 0) +
+              (removeMissing ? toDelete.length : 0);
+            const stepIncrement = totalSteps > 0 ? 100 / totalSteps : 100;
+
+            // Creation goes one by one on purpose: the bulk endpoint is
+            // documented as "update multiple envs", so a key that does not
+            // exist yet cannot be relied on to be created there. Silently
+            // losing a new variable is worse than a few extra requests.
+            for (const item of toCreate) {
+              await webviewProvider!.createEnvironmentVariable(selectedApp.id, {
                 key: item.key,
                 value: item.value,
                 is_preview: false,
-              })),
-              ...toUpdate.map((item) => ({
-                key: item.key,
-                value: item.value,
-                is_preview: item.remote.is_preview,
-                is_literal: item.remote.is_literal,
-                is_multiline: item.remote.is_multiline,
-              })),
-            ];
-
-            if (bulkPayload.length > 0) {
-              progress.report({
-                increment: 0,
-                message: `Aplicando ${bulkPayload.length} variavel(is)...`,
               });
+              progress.report({
+                increment: stepIncrement,
+                message: `Criado ${item.key}`,
+              });
+            }
+
+            // Updates are the common bulk of a sync and go in one request.
+            if (toUpdate.length > 0) {
               await webviewProvider!.updateEnvironmentVariablesBulk(
                 selectedApp.id,
-                bulkPayload
+                toUpdate.map((item) => ({
+                  key: item.key,
+                  value: item.value,
+                  is_preview: item.remote.is_preview,
+                  is_literal: item.remote.is_literal,
+                  is_multiline: item.remote.is_multiline,
+                }))
               );
               progress.report({
-                increment: removeMissing ? 60 : 100,
-                message: 'Variaveis aplicadas.',
+                increment: stepIncrement,
+                message: `Atualizadas ${toUpdate.length} variavel(is)`,
               });
             }
 
             if (removeMissing && toDelete.length > 0) {
               // Deletion has no bulk endpoint; it stays sequential.
-              const deleteIncrement = 40 / toDelete.length;
               for (const item of toDelete) {
                 await webviewProvider!.deleteEnvironmentVariable(
                   selectedApp.id,
                   item.uuid
                 );
                 progress.report({
-                  increment: deleteIncrement,
+                  increment: stepIncrement,
                   message: `Removido ${item.key}`,
                 });
               }

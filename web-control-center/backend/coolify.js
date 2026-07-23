@@ -52,6 +52,22 @@ export function clearCoolifyCache() {
   responseCache.clear();
 }
 
+/**
+ * Drops the cached resource snapshots after a mutation.
+ *
+ * Without this the refresh that follows a start/stop/deploy is served from the
+ * 5s cache and the operator sees the old status — looking as if the action did
+ * nothing. The project index is kept: actions never change project membership.
+ */
+export function invalidateResourceCache() {
+  for (const key of responseCache.keys()) {
+    if (key === 'project-index') {
+      continue;
+    }
+    responseCache.delete(key);
+  }
+}
+
 export function createCoolifyClient({ baseUrl, token, logger = console }) {
   const apiBase = ensureApiBase(baseUrl);
 
@@ -209,54 +225,91 @@ export async function buildProjectIndex(client, logger = console) {
 
   const projectList = Array.isArray(projects) ? projects : [];
 
-  await Promise.all(
-    projectList.map(async (project) => {
-      const environments = Array.isArray(project.environments)
-        ? project.environments
-        : await client
-            .call(`/projects/${encodeURIComponent(project.uuid)}/environments`)
-            .catch(() => []);
+  // Build the full task list first, then drain it with a bounded worker pool.
+  // Fanning out project × environment with Promise.all sent dozens of
+  // simultaneous requests to the VPS — the exact burst this codebase avoids
+  // everywhere else.
+  const tasks = [];
+  for (const project of projectList) {
+    const environments = Array.isArray(project.environments)
+      ? project.environments
+      : await client
+          .call(`/projects/${encodeURIComponent(project.uuid)}/environments`)
+          .catch(() => []);
 
-      const environmentList = Array.isArray(environments) ? environments : [];
+    for (const environment of Array.isArray(environments) ? environments : []) {
+      const environmentKey = environment?.uuid || environment?.name;
+      if (environmentKey) {
+        tasks.push({ project, environment, environmentKey });
+      }
+    }
+  }
 
-      await Promise.all(
-        environmentList.map(async (environment) => {
-          const environmentKey = environment?.uuid || environment?.name;
-          if (!environmentKey) {
-            return;
-          }
+  await drainWithConcurrency(tasks, PROJECT_INDEX_CONCURRENCY, async (task) => {
+    const detail = await client
+      .call(
+        `/projects/${encodeURIComponent(task.project.uuid)}/${encodeURIComponent(task.environmentKey)}`
+      )
+      .catch(() => null);
 
-          const detail = await client
-            .call(
-              `/projects/${encodeURIComponent(project.uuid)}/${encodeURIComponent(environmentKey)}`
-            )
-            .catch(() => null);
+    if (!detail) {
+      return;
+    }
 
-          if (!detail) {
-            return;
-          }
-
-          for (const collection of ['applications', 'services', 'databases', 'postgresqls', 'mysqls', 'mariadbs', 'mongodbs', 'redis', 'keydbs', 'dragonflies', 'clickhouses']) {
-            const items = detail[collection];
-            if (!Array.isArray(items)) {
-              continue;
-            }
-            for (const item of items) {
-              if (item?.uuid) {
-                index.set(item.uuid, {
-                  project: project.name || '',
-                  environment: environment.name || '',
-                });
-              }
-            }
-          }
-        })
-      );
-    })
-  );
+    for (const collection of RESOURCE_COLLECTIONS) {
+      const items = detail[collection];
+      if (!Array.isArray(items)) {
+        continue;
+      }
+      for (const item of items) {
+        if (item?.uuid) {
+          index.set(item.uuid, {
+            project: task.project.name || '',
+            environment: task.environment.name || '',
+          });
+        }
+      }
+    }
+  });
 
   writeCache('project-index', index);
   return index;
+}
+
+const PROJECT_INDEX_CONCURRENCY = Number(
+  process.env.COOLIFY_INDEX_CONCURRENCY || 4
+);
+
+/** Every collection a Coolify environment payload may expose. */
+const RESOURCE_COLLECTIONS = [
+  'applications',
+  'services',
+  'databases',
+  'postgresqls',
+  'mysqls',
+  'mariadbs',
+  'mongodbs',
+  'redis',
+  'keydbs',
+  'dragonflies',
+  'clickhouses',
+];
+
+async function drainWithConcurrency(items, concurrency, handler) {
+  const queue = [...items];
+  const workerCount = Math.max(1, Math.min(concurrency, queue.length || 1));
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (item === undefined) {
+          return;
+        }
+        await handler(item);
+      }
+    })
+  );
 }
 
 export function normalizeProject(item) {
@@ -343,19 +396,24 @@ export async function executeAction(client, { resourceType, uuid, action }) {
     throw new CoolifyRequestError('uuid do recurso e obrigatorio.', 400);
   }
 
-  // Actions mutate state: never serve them from cache.
-  if (resourceType === 'application' && action === 'deploy') {
-    const payload = await client.call(`/deploy?uuid=${encodeURIComponent(uuid)}`, {
-      cacheTtlMs: 0,
-    });
-    return payload?.message || 'Deploy solicitado.';
-  }
+  try {
+    // Actions mutate state: never serve them from cache.
+    if (resourceType === 'application' && action === 'deploy') {
+      const payload = await client.call(`/deploy?uuid=${encodeURIComponent(uuid)}`, {
+        cacheTtlMs: 0,
+      });
+      return payload?.message || 'Deploy solicitado.';
+    }
 
-  const payload = await client.call(
-    `/${collection}/${encodeURIComponent(uuid)}/${action}`,
-    { cacheTtlMs: 0 }
-  );
-  return payload?.message || `${action} solicitado.`;
+    const payload = await client.call(
+      `/${collection}/${encodeURIComponent(uuid)}/${action}`,
+      { cacheTtlMs: 0 }
+    );
+    return payload?.message || `${action} solicitado.`;
+  } finally {
+    // Invalidate even on failure: the action may have partially applied.
+    invalidateResourceCache();
+  }
 }
 
 export function clampPaging(rawSkip, rawTake, { defaultTake = 20, maxTake = 100 } = {}) {

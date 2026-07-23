@@ -13,8 +13,8 @@ import {
   parseObjectPayload,
 } from '../utils/payloadGuards';
 import {
+  mergeDeployments,
   normalizeDeploymentLogs,
-  resolveDeploymentId,
 } from '../utils/deploymentIdentity';
 
 export interface Application {
@@ -320,37 +320,21 @@ export class CoolifyService {
   }
 
   /**
-   * Combines currently running deployments with the recent history of each
-   * application, so the operator sees past failures instead of an empty list.
-   * Concurrency is capped to avoid a burst of requests against the VPS.
+   * Recent deployments of each application.
+   *
+   * Costs one request per application, so callers should cache it rather than
+   * run it on every refresh cycle. Concurrency is capped to avoid a burst.
    */
-  async getDeploymentHistory(
+  async getDeploymentHistoryOnly(
     applicationUuids: string[],
     takePerApplication = 5,
     concurrency = 4
   ): Promise<Deployment[]> {
-    const running = await this.getRunningDeployments().catch((error) => {
-      logger.warn('Failed to list running deployments', error);
-      return [] as Deployment[];
-    });
-
-    const seen = new Set<string>();
-    const merged: Deployment[] = [];
-
-    const push = (deployment: Deployment, isRunning: boolean) => {
-      const key = resolveDeploymentId(deployment);
-      if (!key || seen.has(key)) {
-        return;
-      }
-      seen.add(key);
-      merged.push({ ...deployment, isRunning });
-    };
-
-    running.forEach((deployment) => push(deployment, true));
-
+    const collected: Deployment[] = [];
     const queue = [...applicationUuids];
+
     const workers = Array.from(
-      { length: Math.min(concurrency, Math.max(queue.length, 1)) },
+      { length: Math.max(1, Math.min(concurrency, queue.length || 1)) },
       async () => {
         while (queue.length > 0) {
           const uuid = queue.shift();
@@ -364,7 +348,7 @@ export class CoolifyService {
               0,
               takePerApplication
             );
-            history.forEach((deployment) => push(deployment, false));
+            collected.push(...history);
           } catch (error) {
             logger.warn('Failed to load deployment history for application', {
               applicationUuid: uuid,
@@ -376,11 +360,31 @@ export class CoolifyService {
     );
 
     await Promise.all(workers);
+    return collected;
+  }
 
-    return merged.sort(
-      (a, b) =>
-        new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-    );
+  /**
+   * Convenience wrapper: running deployments plus recent history, merged.
+   * Prefer the two-step form when the history can be cached separately.
+   */
+  async getDeploymentHistory(
+    applicationUuids: string[],
+    takePerApplication = 5,
+    concurrency = 4
+  ): Promise<Deployment[]> {
+    const [running, history] = await Promise.all([
+      this.getRunningDeployments().catch((error) => {
+        logger.warn('Failed to list running deployments', error);
+        return [] as Deployment[];
+      }),
+      this.getDeploymentHistoryOnly(
+        applicationUuids,
+        takePerApplication,
+        concurrency
+      ),
+    ]);
+
+    return mergeDeployments(running, history);
   }
 
   async getDeploymentsByApplication(
