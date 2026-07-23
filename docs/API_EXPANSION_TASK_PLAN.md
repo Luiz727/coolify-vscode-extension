@@ -53,10 +53,34 @@ Expandir a extensão para cobrir mais operações da API do Coolify com foco em 
 ## Próxima onda sugerida (P2)
 - [x] `GET /api/v1/services/{uuid}` detalhes completos no sidebar
 - [x] `GET /api/v1/databases/{uuid}` detalhes completos no sidebar
-- [x] Backups de database (listar/criar/restaurar) no sidebar
 - [x] `GET /api/v1/projects` e `GET /api/v1/projects/{uuid}/...` para navegação por projeto/ambiente
 - [x] Tooling de chat para services/databases (languageModelTools)
 - [x] Seções dedicadas no sidebar para services/databases (paridade visual total)
+
+### Backups de database — correção de escopo
+
+A entrega anterior marcava "listar/criar/restaurar" como concluída. A auditoria
+mostrou que isso não correspondia à API:
+
+- [x] Listar **agendamentos** de backup (`GET /databases/{uuid}/backups`) — a rota
+      devolve configurações agendadas, não arquivos de backup.
+- [x] Listar **execuções** de cada agendamento
+      (`GET /databases/{uuid}/backups/{scheduled_backup_uuid}/executions`).
+- [x] Criar agendamento com `frequency` obrigatório (a versão anterior enviava
+      corpo vazio e recebia 422 em toda chamada).
+- [x] Disparar backup imediato via `PATCH .../backups/{uuid}` com `backup_now`.
+- [ ] ~~Restaurar backup~~ — **não existe na API do Coolify**. A implementação
+      anterior tentava três rotas inventadas. O botão foi removido e o
+      procedimento manual está documentado em `OPERATIONAL_GUIDE.md` §6.
+
+## Onda P3 (concluída)
+
+- [x] `GET /api/v1/applications/{uuid}/logs` — logs de runtime do container
+- [x] `PATCH /api/v1/applications/{uuid}/envs/bulk` — sync de `.env` em 1 requisição
+- [x] `GET /api/v1/deployments/applications/{uuid}` como fonte de histórico
+- [x] `GET /api/v1/servers` + `/resources` + `/validate` — contexto de infraestrutura
+- [x] Confirmação obrigatória em todas as ferramentas de escrita
+- [x] Resolução estrita de alvo (sem adivinhação em operações destrutivas)
 
 ## Critérios de aceite
 - [x] Build/typecheck/lint passando

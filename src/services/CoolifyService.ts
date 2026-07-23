@@ -6,11 +6,16 @@ import {
   isValidCoolifyProject,
   isValidCoolifyDeployment,
   isValidCoolifyDatabase,
+  isValidCoolifyServer,
   isValidCoolifyService,
   isValidEnvironmentVariable,
   parseArrayPayload,
   parseObjectPayload,
 } from '../utils/payloadGuards';
+import {
+  normalizeDeploymentLogs,
+  resolveDeploymentId,
+} from '../utils/deploymentIdentity';
 
 export interface Application {
   uuid: string;
@@ -36,6 +41,8 @@ export interface Deployment {
   deployment_url: string;
   commit_message: string;
   logs?: string;
+  /** True when this deployment is currently executing (not historical). */
+  isRunning?: boolean;
 }
 
 export interface ServiceResource {
@@ -52,12 +59,42 @@ export interface DatabaseResource {
   description?: string;
 }
 
-export interface DatabaseBackupResource {
-  id: string;
-  name?: string;
+/**
+ * A *scheduled backup configuration*, not a stored backup file.
+ *
+ * `GET /databases/{uuid}/backups` returns schedules (frequency, enabled, S3
+ * target). The actual backup runs live under `/backups/{uuid}/executions`.
+ * Conflating the two used to make the UI show schedules as if they were
+ * restorable backup files.
+ */
+export interface DatabaseBackupSchedule {
+  uuid: string;
+  frequency?: string;
+  enabled?: boolean;
+  saveS3?: boolean;
+  databasesToBackup?: string;
+  dumpAll?: boolean;
+}
+
+/** One actual backup run of a schedule. */
+export interface DatabaseBackupExecution {
+  uuid: string;
   status?: string;
-  created_at?: string;
+  createdAt?: string;
   size?: string;
+  message?: string;
+  filename?: string;
+}
+
+export interface CreateBackupScheduleRequest {
+  /** Required by the API: cron expression or daily/weekly/monthly/etc. */
+  frequency: string;
+  enabled?: boolean;
+  save_s3?: boolean;
+  s3_storage_uuid?: string;
+  databases_to_backup?: string;
+  dump_all?: boolean;
+  backup_now?: boolean;
 }
 
 export interface ProjectResource {
@@ -67,11 +104,41 @@ export interface ProjectResource {
   environments?: unknown[];
 }
 
+/**
+ * A machine registered in Coolify. The notification flags below are the
+ * root-cause signals that explain why several resources went down at once.
+ */
+export interface ServerResource {
+  uuid: string;
+  name: string;
+  description?: string;
+  ip?: string;
+  port?: number;
+  user?: string;
+  proxy_type?: string;
+  unreachable_count?: number;
+  unreachable_notification_sent?: boolean;
+  high_disk_usage_notification_sent?: boolean;
+  settings?: Record<string, unknown>;
+  proxy?: Record<string, unknown>;
+}
+
+export interface ServerResourceItem {
+  uuid: string;
+  name: string;
+  type: string;
+  status: string;
+}
+
 export interface ApplicationLifecycleResponse {
   message?: string;
   deployment_uuid?: string;
 }
 
+/**
+ * As returned by the API. `is_buildtime`/`is_runtime` exist on the model but
+ * are NOT accepted on create/update requests — see the request types below.
+ */
 export interface EnvironmentVariable {
   uuid: string;
   key: string;
@@ -81,27 +148,31 @@ export interface EnvironmentVariable {
   is_literal?: boolean;
   is_multiline?: boolean;
   is_runtime?: boolean;
+  is_shown_once?: boolean;
 }
 
+/**
+ * Mirrors exactly the fields Coolify accepts on POST/PATCH
+ * `/applications/{uuid}/envs`. The API rejects unknown fields with 422, so
+ * sending `is_buildtime`/`is_runtime` here fails every single call.
+ */
 export interface EnvironmentVariableCreateRequest {
   key: string;
   value: string;
-  is_buildtime?: boolean;
   is_preview?: boolean;
   is_literal?: boolean;
   is_multiline?: boolean;
-  is_runtime?: boolean;
+  is_shown_once?: boolean;
 }
 
+/** `key` and `value` are both required by the API on update. */
 export interface EnvironmentVariableUpdateRequest {
-  uuid: string;
-  key?: string;
-  value?: string;
-  is_buildtime?: boolean;
+  key: string;
+  value: string;
   is_preview?: boolean;
   is_literal?: boolean;
   is_multiline?: boolean;
-  is_runtime?: boolean;
+  is_shown_once?: boolean;
 }
 
 export class CoolifyService {
@@ -146,78 +217,67 @@ export class CoolifyService {
     return parseObjectPayload(payload, guard, entityName);
   }
 
-  private extractBackupId(value: unknown): string {
-    if (!value || typeof value !== 'object') {
-      return '';
-    }
-
-    const candidate = value as Record<string, unknown>;
-    const idCandidates = [
-      candidate.id,
-      candidate.uuid,
-      candidate.backup_uuid,
-      candidate.backup_id,
-      candidate.filename,
-      candidate.name,
-    ];
-
-    for (const idCandidate of idCandidates) {
-      if (typeof idCandidate === 'string' && idCandidate.trim().length > 0) {
-        return idCandidate;
+  private readString(
+    candidate: Record<string, unknown>,
+    ...keys: string[]
+  ): string | undefined {
+    for (const key of keys) {
+      const value = candidate[key];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value;
       }
-      if (typeof idCandidate === 'number' && Number.isFinite(idCandidate)) {
-        return String(idCandidate);
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
       }
     }
-
-    return '';
+    return undefined;
   }
 
-  private mapBackupItem(value: unknown): DatabaseBackupResource | undefined {
+  private mapBackupSchedule(value: unknown): DatabaseBackupSchedule | undefined {
     if (!value || typeof value !== 'object') {
       return undefined;
     }
 
     const candidate = value as Record<string, unknown>;
-    const id = this.extractBackupId(candidate);
-    if (!id) {
+    const uuid = this.readString(candidate, 'uuid', 'id');
+    if (!uuid) {
       return undefined;
     }
 
     return {
-      id,
-      name:
-        typeof candidate.name === 'string'
-          ? candidate.name
-          : typeof candidate.filename === 'string'
-            ? candidate.filename
-            : undefined,
-      status:
-        typeof candidate.status === 'string'
-          ? candidate.status
-          : typeof candidate.state === 'string'
-            ? candidate.state
-            : undefined,
-      created_at:
-        typeof candidate.created_at === 'string'
-          ? candidate.created_at
-          : typeof candidate.createdAt === 'string'
-            ? candidate.createdAt
-            : undefined,
-      size:
-        typeof candidate.size === 'string'
-          ? candidate.size
-          : typeof candidate.file_size === 'string'
-            ? candidate.file_size
-            : undefined,
+      uuid,
+      frequency: this.readString(candidate, 'frequency'),
+      enabled: typeof candidate.enabled === 'boolean' ? candidate.enabled : undefined,
+      saveS3: typeof candidate.save_s3 === 'boolean' ? candidate.save_s3 : undefined,
+      databasesToBackup: this.readString(candidate, 'databases_to_backup'),
+      dumpAll: typeof candidate.dump_all === 'boolean' ? candidate.dump_all : undefined,
     };
   }
 
-  private normalizeBackupCollection(payload: unknown): DatabaseBackupResource[] {
+  private mapBackupExecution(value: unknown): DatabaseBackupExecution | undefined {
+    if (!value || typeof value !== 'object') {
+      return undefined;
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const uuid = this.readString(candidate, 'uuid', 'id');
+    if (!uuid) {
+      return undefined;
+    }
+
+    return {
+      uuid,
+      status: this.readString(candidate, 'status', 'state'),
+      createdAt: this.readString(candidate, 'created_at', 'createdAt'),
+      size: this.readString(candidate, 'size', 'file_size'),
+      message: this.readString(candidate, 'message'),
+      filename: this.readString(candidate, 'filename'),
+    };
+  }
+
+  private toArrayPayload(payload: unknown): unknown[] {
     if (Array.isArray(payload)) {
-      return payload
-        .map((item) => this.mapBackupItem(item))
-        .filter((item): item is DatabaseBackupResource => !!item);
+      return payload;
     }
 
     if (payload && typeof payload === 'object') {
@@ -225,32 +285,12 @@ export class CoolifyService {
       const arrayLike = [candidate.backups, candidate.items, candidate.data].find(
         (value) => Array.isArray(value)
       );
-
       if (Array.isArray(arrayLike)) {
-        return arrayLike
-          .map((item) => this.mapBackupItem(item))
-          .filter((item): item is DatabaseBackupResource => !!item);
+        return arrayLike;
       }
     }
 
     return [];
-  }
-
-  private async requestWithFallback<T>(
-    paths: string[],
-    options: RequestInit
-  ): Promise<T> {
-    let lastError: unknown;
-
-    for (const path of paths) {
-      try {
-        return await this.client.request<T>(path, options);
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError;
   }
 
   async getApplications(): Promise<Application[]> {
@@ -261,11 +301,85 @@ export class CoolifyService {
     );
   }
 
-  async getDeployments(): Promise<Deployment[]> {
+  /**
+   * IMPORTANT: `/deployments` only lists deployments that are running RIGHT
+   * NOW. On an idle system it returns an empty array, which is why any screen
+   * built solely on it looks broken. For history use getDeploymentHistory.
+   */
+  async getRunningDeployments(): Promise<Deployment[]> {
     return this.fetchValidatedArray(
       '/api/v1/deployments',
       isValidCoolifyDeployment,
       'deployments'
+    );
+  }
+
+  /** @deprecated Use getRunningDeployments (running only) or getDeploymentHistory. */
+  async getDeployments(): Promise<Deployment[]> {
+    return this.getRunningDeployments();
+  }
+
+  /**
+   * Combines currently running deployments with the recent history of each
+   * application, so the operator sees past failures instead of an empty list.
+   * Concurrency is capped to avoid a burst of requests against the VPS.
+   */
+  async getDeploymentHistory(
+    applicationUuids: string[],
+    takePerApplication = 5,
+    concurrency = 4
+  ): Promise<Deployment[]> {
+    const running = await this.getRunningDeployments().catch((error) => {
+      logger.warn('Failed to list running deployments', error);
+      return [] as Deployment[];
+    });
+
+    const seen = new Set<string>();
+    const merged: Deployment[] = [];
+
+    const push = (deployment: Deployment, isRunning: boolean) => {
+      const key = resolveDeploymentId(deployment);
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      merged.push({ ...deployment, isRunning });
+    };
+
+    running.forEach((deployment) => push(deployment, true));
+
+    const queue = [...applicationUuids];
+    const workers = Array.from(
+      { length: Math.min(concurrency, Math.max(queue.length, 1)) },
+      async () => {
+        while (queue.length > 0) {
+          const uuid = queue.shift();
+          if (!uuid) {
+            return;
+          }
+
+          try {
+            const history = await this.getDeploymentsByApplication(
+              uuid,
+              0,
+              takePerApplication
+            );
+            history.forEach((deployment) => push(deployment, false));
+          } catch (error) {
+            logger.warn('Failed to load deployment history for application', {
+              applicationUuid: uuid,
+              error,
+            });
+          }
+        }
+      }
+    );
+
+    await Promise.all(workers);
+
+    return merged.sort(
+      (a, b) =>
+        new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
     );
   }
 
@@ -294,12 +408,41 @@ export class CoolifyService {
 
   async getDeploymentLogs(deploymentId: string): Promise<string> {
     const deployment = await this.getDeployment(deploymentId);
-    return deployment.logs || '';
+    return normalizeDeploymentLogs(deployment.logs);
   }
 
-  async startDeployment(uuid: string): Promise<boolean> {
+  /**
+   * Runtime container logs — what is happening in the app right now.
+   * Distinct from deployment logs, which only cover the build/release step.
+   */
+  async getApplicationLogs(applicationUuid: string): Promise<string> {
+    const payload = await this.fetchWithAuth<unknown>(
+      `/api/v1/applications/${applicationUuid}/logs`
+    );
+
+    if (payload && typeof payload === 'object') {
+      const candidate = payload as Record<string, unknown>;
+      if (typeof candidate.logs === 'string') {
+        return candidate.logs;
+      }
+    }
+
+    return typeof payload === 'string' ? payload : '';
+  }
+
+  /**
+   * Triggers a deployment.
+   *
+   * Deliberately NOT retried by callers: this endpoint is not idempotent, so a
+   * timeout followed by a retry would queue a second deployment of the same
+   * application.
+   */
+  async startDeployment(uuid: string, force = false): Promise<boolean> {
     try {
-      await this.client.get(`/api/v1/deploy?uuid=${uuid}`);
+      const forceParam = force ? '&force=true' : '';
+      await this.client.get(
+        `/api/v1/deploy?uuid=${encodeURIComponent(uuid)}${forceParam}`
+      );
 
       return true;
     } catch (error) {
@@ -446,73 +589,110 @@ export class CoolifyService {
     return this.executeDatabaseAction(databaseUuid, 'restart');
   }
 
-  async listDatabaseBackups(
+  /**
+   * Lists scheduled backup *configurations* for a database.
+   * These are schedules, not restorable files — see listBackupExecutions.
+   */
+  async listBackupSchedules(
     databaseUuid: string
-  ): Promise<DatabaseBackupResource[]> {
-    const candidates = [
-      `/api/v1/databases/${databaseUuid}/backups`,
-      `/api/v1/databases/${databaseUuid}/backup`,
-    ];
-
-    let lastError: unknown;
-    for (const endpoint of candidates) {
-      try {
-        const payload = await this.fetchWithAuth<unknown>(endpoint);
-        const backups = this.normalizeBackupCollection(payload);
-        if (backups.length > 0 || endpoint.endsWith('/backups')) {
-          return backups;
-        }
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    if (lastError) {
-      throw lastError;
-    }
-
-    return [];
-  }
-
-  async createDatabaseBackup(databaseUuid: string): Promise<string> {
-    const response = await this.requestWithFallback<unknown>(
-      [
-        `/api/v1/databases/${databaseUuid}/backups`,
-        `/api/v1/databases/${databaseUuid}/backup`,
-      ],
-      {
-        method: 'POST',
-      }
+  ): Promise<DatabaseBackupSchedule[]> {
+    const payload = await this.fetchWithAuth<unknown>(
+      `/api/v1/databases/${databaseUuid}/backups`
     );
 
-    if (isValidApplicationLifecycleResponse(response)) {
-      return response.message || 'Database backup requested.';
-    }
-
-    return 'Database backup requested.';
+    return this.toArrayPayload(payload)
+      .map((item) => this.mapBackupSchedule(item))
+      .filter((item): item is DatabaseBackupSchedule => !!item);
   }
 
-  async restoreDatabaseBackup(
+  /** The actual backup runs of a given schedule. */
+  async listBackupExecutions(
     databaseUuid: string,
-    backupId: string
+    scheduledBackupUuid: string
+  ): Promise<DatabaseBackupExecution[]> {
+    const payload = await this.fetchWithAuth<unknown>(
+      `/api/v1/databases/${databaseUuid}/backups/${encodeURIComponent(
+        scheduledBackupUuid
+      )}/executions`
+    );
+
+    return this.toArrayPayload(payload)
+      .map((item) => this.mapBackupExecution(item))
+      .filter((item): item is DatabaseBackupExecution => !!item);
+  }
+
+  /**
+   * Creates a scheduled backup configuration.
+   * `frequency` is mandatory — omitting it makes the API answer 422.
+   */
+  async createBackupSchedule(
+    databaseUuid: string,
+    request: CreateBackupScheduleRequest
   ): Promise<string> {
-    const encodedBackupId = encodeURIComponent(backupId);
-    const response = await this.requestWithFallback<unknown>(
-      [
-        `/api/v1/databases/${databaseUuid}/backups/${encodedBackupId}/restore`,
-        `/api/v1/databases/${databaseUuid}/backups/restore?backup_uuid=${encodedBackupId}`,
-        `/api/v1/databases/${databaseUuid}/restore?backup_uuid=${encodedBackupId}`,
-      ],
+    if (!request?.frequency) {
+      throw new Error('frequency is required to create a backup schedule.');
+    }
+
+    const response = await this.client.request<unknown>(
+      `/api/v1/databases/${databaseUuid}/backups`,
       {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
       }
     );
 
     if (isValidApplicationLifecycleResponse(response)) {
-      return response.message || 'Database restore requested.';
+      return response.message || 'Backup schedule created.';
     }
 
-    return 'Database restore requested.';
+    return 'Backup schedule created.';
+  }
+
+  /** Triggers an immediate run of an existing schedule. */
+  async runBackupNow(
+    databaseUuid: string,
+    scheduledBackupUuid: string
+  ): Promise<string> {
+    const response = await this.client.request<unknown>(
+      `/api/v1/databases/${databaseUuid}/backups/${encodeURIComponent(
+        scheduledBackupUuid
+      )}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backup_now: true }),
+      }
+    );
+
+    if (isValidApplicationLifecycleResponse(response)) {
+      return response.message || 'Backup iniciado.';
+    }
+
+    return 'Backup iniciado.';
+  }
+
+  async updateBackupSchedule(
+    databaseUuid: string,
+    scheduledBackupUuid: string,
+    request: Partial<CreateBackupScheduleRequest>
+  ): Promise<string> {
+    const response = await this.client.request<unknown>(
+      `/api/v1/databases/${databaseUuid}/backups/${encodeURIComponent(
+        scheduledBackupUuid
+      )}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      }
+    );
+
+    if (isValidApplicationLifecycleResponse(response)) {
+      return response.message || 'Backup schedule updated.';
+    }
+
+    return 'Backup schedule updated.';
   }
 
   private normalizeProjectCollection(payload: unknown): ProjectResource[] {
@@ -535,26 +715,22 @@ export class CoolifyService {
   }
 
   async getProjects(): Promise<ProjectResource[]> {
-    const candidates = ['/api/v1/projects', '/api/v1/project'];
-    let lastError: unknown;
+    const payload = await this.fetchWithAuth<unknown>('/api/v1/projects');
+    return this.normalizeProjectCollection(payload);
+  }
 
-    for (const endpoint of candidates) {
-      try {
-        const payload = await this.fetchWithAuth<unknown>(endpoint);
-        const projects = this.normalizeProjectCollection(payload);
-        if (projects.length > 0 || endpoint.endsWith('/projects')) {
-          return projects;
-        }
-      } catch (error) {
-        lastError = error;
-      }
-    }
+  /** Resources of a single environment — the reliable project/env mapping. */
+  async getProjectEnvironment(
+    projectUuid: string,
+    environmentNameOrUuid: string
+  ): Promise<Record<string, unknown>> {
+    const payload = await this.fetchWithAuth<unknown>(
+      `/api/v1/projects/${projectUuid}/${encodeURIComponent(environmentNameOrUuid)}`
+    );
 
-    if (lastError) {
-      throw lastError;
-    }
-
-    return [];
+    return payload && typeof payload === 'object'
+      ? (payload as Record<string, unknown>)
+      : {};
   }
 
   async getProject(projectUuid: string): Promise<ProjectResource> {
@@ -605,6 +781,83 @@ export class CoolifyService {
         body: JSON.stringify(request),
       }
     );
+  }
+
+  /**
+   * Applies many variables in a single request.
+   * Syncing a 50-key .env used to mean 50 sequential round trips.
+   */
+  async updateEnvironmentVariablesBulk(
+    applicationId: string,
+    variables: EnvironmentVariableUpdateRequest[]
+  ): Promise<void> {
+    if (variables.length === 0) {
+      return;
+    }
+
+    await this.client.request<unknown>(
+      `/api/v1/applications/${applicationId}/envs/bulk`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ data: variables }),
+      }
+    );
+  }
+
+  async getServers(): Promise<ServerResource[]> {
+    return this.fetchValidatedArray(
+      '/api/v1/servers',
+      isValidCoolifyServer,
+      'servers'
+    );
+  }
+
+  async getServer(serverUuid: string): Promise<ServerResource> {
+    return this.fetchValidatedObject(
+      `/api/v1/servers/${serverUuid}`,
+      isValidCoolifyServer,
+      'server'
+    );
+  }
+
+  /** Which resources run on a given machine — used to size the blast radius. */
+  async getServerResources(serverUuid: string): Promise<ServerResourceItem[]> {
+    const payload = await this.fetchWithAuth<unknown>(
+      `/api/v1/servers/${serverUuid}/resources`
+    );
+
+    return this.toArrayPayload(payload)
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          return undefined;
+        }
+        const candidate = item as Record<string, unknown>;
+        const uuid = this.readString(candidate, 'uuid', 'id');
+        if (!uuid) {
+          return undefined;
+        }
+        return {
+          uuid,
+          name: this.readString(candidate, 'name') || uuid,
+          type: this.readString(candidate, 'type') || 'unknown',
+          status: this.readString(candidate, 'status') || 'unknown',
+        };
+      })
+      .filter((item): item is ServerResourceItem => !!item);
+  }
+
+  /** Returns true when Coolify can reach the machine over SSH. */
+  async validateServer(serverUuid: string): Promise<boolean> {
+    try {
+      await this.client.get(`/api/v1/servers/${serverUuid}/validate`);
+      return true;
+    } catch (error) {
+      logger.warn('Server validation failed', { serverUuid, error });
+      return false;
+    }
   }
 
   async deleteEnvironmentVariable(

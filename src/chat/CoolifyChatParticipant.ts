@@ -2,6 +2,17 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { CoolifyService } from '../services/CoolifyService';
 import { logger } from '../services/LoggerService';
+import {
+  ChatIntent,
+  ResourceKind,
+  extractTarget,
+  routeIntent,
+} from './intentRouter';
+import {
+  describeResolutionError,
+  resolveTarget,
+} from '../utils/targetResolver';
+import { parseResourceStatus } from '../utils/resourceStatus';
 
 type ChatStreamLike = {
   markdown?: (value: string) => void;
@@ -41,12 +52,28 @@ interface DatabaseListItem {
   description: string;
 }
 
+interface ServerListItem {
+  id: string;
+  name: string;
+  ip: string;
+  reachable: boolean;
+  unreachableCount: number;
+  highDiskUsage: boolean;
+}
+
 interface CoolifyProviderLike {
   getApplications(): Promise<ApplicationListItem[]>;
   getDeployments(): Promise<DeploymentListItem[]>;
+  getDeploymentsByApplication(
+    applicationId: string,
+    skip?: number,
+    take?: number
+  ): Promise<DeploymentListItem[]>;
   getServices(): Promise<ServiceListItem[]>;
   getDatabases(): Promise<DatabaseListItem[]>;
+  getServers(): Promise<ServerListItem[]>;
   getDeploymentLogs(deploymentId: string): Promise<string>;
+  getApplicationRuntimeLogs(applicationId: string): Promise<string>;
   deployApplication(applicationId: string): Promise<void>;
   startApplication(applicationId: string): Promise<string>;
   stopApplication(applicationId: string): Promise<string>;
@@ -73,201 +100,31 @@ function writeProgress(stream: ChatStreamLike, text: string): void {
   }
 }
 
-function normalize(input: string): string {
-  return input
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
-function extractTarget(prompt: string): string | undefined {
-  const quoted = prompt.match(/"([^"]+)"/);
-  if (quoted?.[1]) {
-    return quoted[1].trim();
+/** Adds a visible marker when a container is up but failing its healthcheck. */
+function describeStatus(status: string): string {
+  const parsed = parseResourceStatus(status);
+  if (parsed.bucket === 'degraded') {
+    return `${status} ⚠️ healthcheck falhando`;
   }
-
-  const targetByKeyword = prompt.match(
-    /(?:app|aplicacao|aplicação|application)\s+([a-zA-Z0-9._-]+)/i
-  );
-  if (targetByKeyword?.[1]) {
-    return targetByKeyword[1].trim();
-  }
-
-  return undefined;
-}
-
-  function extractServiceTarget(prompt: string): string | undefined {
-    const quoted = prompt.match(/"([^"]+)"/);
-    if (quoted?.[1]) {
-      return quoted[1].trim();
-    }
-
-    const targetByKeyword = prompt.match(
-      /(?:service|servico|serviço)\s+([a-zA-Z0-9._-]+)/i
-    );
-    if (targetByKeyword?.[1]) {
-      return targetByKeyword[1].trim();
-    }
-
-    return undefined;
-  }
-
-  function extractDatabaseTarget(prompt: string): string | undefined {
-    const quoted = prompt.match(/"([^"]+)"/);
-    if (quoted?.[1]) {
-      return quoted[1].trim();
-    }
-
-    const targetByKeyword = prompt.match(
-      /(?:database|databases|banco|bancos)\s+([a-zA-Z0-9._-]+)/i
-    );
-    if (targetByKeyword?.[1]) {
-      return targetByKeyword[1].trim();
-    }
-
-    return undefined;
-  }
-
-function findApplication(
-  applications: ApplicationListItem[],
-  target?: string
-): ApplicationListItem | undefined {
-  if (!target) {
-    return applications.length === 1 ? applications[0] : undefined;
-  }
-
-  const normalizedTarget = normalize(target);
-  const exact = applications.find(
-    (app) =>
-      normalize(app.name) === normalizedTarget ||
-      normalize(app.id) === normalizedTarget
-  );
-  if (exact) {
-    return exact;
-  }
-
-  return applications.find(
-    (app) =>
-      normalize(app.name).includes(normalizedTarget) ||
-      normalize(app.label).includes(normalizedTarget)
-  );
-}
-
-function looksLikeListIntent(normalizedPrompt: string): boolean {
-  return (
-    normalizedPrompt.includes('listar') ||
-    normalizedPrompt.includes('list') ||
-    normalizedPrompt.includes('applications') ||
-    normalizedPrompt.includes('aplicacoes') ||
-    normalizedPrompt.includes('apps')
-  );
-}
-
-  function looksLikeApplicationIntent(normalizedPrompt: string): boolean {
-    return (
-      normalizedPrompt.includes('applications') ||
-      normalizedPrompt.includes('aplicacoes') ||
-      normalizedPrompt.includes('apps') ||
-      normalizedPrompt.includes('app') ||
-      normalizedPrompt.includes('aplicacao') ||
-      normalizedPrompt.includes('aplicação')
-    );
-  }
-
-  function looksLikeServiceIntent(normalizedPrompt: string): boolean {
-    return (
-      normalizedPrompt.includes('service') ||
-      normalizedPrompt.includes('servico') ||
-      normalizedPrompt.includes('serviço')
-    );
-  }
-
-  function looksLikeDatabaseIntent(normalizedPrompt: string): boolean {
-    return (
-      normalizedPrompt.includes('database') ||
-      normalizedPrompt.includes('databases') ||
-      normalizedPrompt.includes('banco') ||
-      normalizedPrompt.includes('bancos')
-    );
-  }
-
-function looksLikeStatusIntent(normalizedPrompt: string): boolean {
-  return normalizedPrompt.includes('status') || normalizedPrompt.includes('estado');
-}
-
-function looksLikeDeployIntent(normalizedPrompt: string): boolean {
-  return (
-    normalizedPrompt.includes('deploy') ||
-    normalizedPrompt.includes('implantar') ||
-    normalizedPrompt.includes('publicar')
-  );
-}
-
-function looksLikeLogsIntent(normalizedPrompt: string): boolean {
-  return normalizedPrompt.includes('logs') || normalizedPrompt.includes('log');
-}
-
-function looksLikeConfigureIntent(normalizedPrompt: string): boolean {
-  return (
-    normalizedPrompt.includes('configurar') ||
-    normalizedPrompt.includes('configure') ||
-    normalizedPrompt.includes('api key') ||
-    normalizedPrompt.includes('token')
-  );
-}
-
-function lifecycleAction(
-  normalizedPrompt: string
-): 'start' | 'stop' | 'restart' | undefined {
-  if (
-    normalizedPrompt.includes('restart') ||
-    normalizedPrompt.includes('reiniciar') ||
-    normalizedPrompt.includes('restarted')
-  ) {
-    return 'restart';
-  }
-
-  if (
-    normalizedPrompt.includes('stop') ||
-    normalizedPrompt.includes('parar') ||
-    normalizedPrompt.includes('desligar')
-  ) {
-    return 'stop';
-  }
-
-  if (
-    normalizedPrompt.includes('start') ||
-    normalizedPrompt.includes('iniciar') ||
-    normalizedPrompt.includes('ligar')
-  ) {
-    return 'start';
-  }
-
-  return undefined;
-}
-
-function looksLikeHealthIntent(normalizedPrompt: string): boolean {
-  return (
-    normalizedPrompt.includes('health') ||
-    normalizedPrompt.includes('saude') ||
-    normalizedPrompt.includes('conexao')
-  );
+  return status;
 }
 
 function helpText(): string {
   return [
-    'Posso executar ações de MVP no Coolify diretamente pelo chat:',
-    '- `configurar coolify`',
-    '- `listar apps`',
+    'Posso operar o Coolify pelo chat. Consultas são livres; ações que mudam estado pedem confirmação e exigem que você diga qual recurso.',
+    '',
+    '**Consultar**',
+    '- `listar apps` · `listar serviços` · `listar bancos` · `listar servidores`',
     '- `status da app "nome"`',
-    '- `deploy da app "nome"`',
+    '- `listar deployments da app "nome"`',
     '- `logs da app "nome"`',
-    '- `restart|stop|start da app "nome"`',
-    '- `listar serviços`',
-    '- `start|stop|restart do serviço "nome"`',
-    '- `listar bancos`',
-    '- `start|stop|restart do banco "nome"`',
     '- `health check coolify`',
+    '',
+    '**Alterar** (sempre com o nome entre aspas)',
+    '- `deploy da app "nome"`',
+    '- `restart|stop|start da app "nome"`',
+    '- `restart|stop|start do serviço "nome"`',
+    '- `restart|stop|start do banco "nome"`',
   ].join('\n');
 }
 
@@ -287,23 +144,65 @@ async function ensureConfigured(
   return true;
 }
 
+/**
+ * Confirms a state-changing action with the user.
+ *
+ * A chat message is an ambiguous instrument: the model may have misread the
+ * target, or the user may have been imprecise. Anything that stops, restarts
+ * or deploys goes through a modal naming the resource and the context.
+ */
+async function confirmAction(
+  configManager: ConfigurationManager,
+  action: string,
+  resourceLabel: string,
+  impact: string
+): Promise<boolean> {
+  const contextName = await configManager.getActiveContextName();
+  const serverUrl = await configManager.getServerUrl();
+
+  const choice = await vscode.window.showWarningMessage(
+    `Confirmar "${action}" em ${resourceLabel}?`,
+    {
+      modal: true,
+      detail: `${impact}\n\nContexto: ${contextName} (${serverUrl || 'sem servidor'})`,
+    },
+    'Confirmar'
+  );
+
+  return choice === 'Confirmar';
+}
+
+function lifecycleImpact(action: string, resource: ResourceKind): string {
+  if (action === 'stop') {
+    return resource === 'database'
+      ? 'Todas as aplicações que dependem deste banco vão falhar enquanto ele estiver parado.'
+      : 'O recurso ficará indisponível até ser iniciado novamente.';
+  }
+  if (action === 'restart') {
+    return 'O recurso ficará indisponível durante o reinício.';
+  }
+  return 'O recurso será iniciado.';
+}
+
 export function registerCoolifyChatParticipant(
   configManager: ConfigurationManager,
   getProvider: ProviderResolver
 ): vscode.Disposable | undefined {
-  const chatApi = (vscode as unknown as {
-    chat?: {
-      createChatParticipant?: (
-        id: string,
-        handler: (
-          request: ChatRequestLike,
-          context: unknown,
-          stream: ChatStreamLike,
-          token: vscode.CancellationToken
-        ) => Promise<void>
-      ) => vscode.Disposable;
-    };
-  }).chat;
+  const chatApi = (
+    vscode as unknown as {
+      chat?: {
+        createChatParticipant?: (
+          id: string,
+          handler: (
+            request: ChatRequestLike,
+            context: unknown,
+            stream: ChatStreamLike,
+            token: vscode.CancellationToken
+          ) => Promise<void>
+        ) => vscode.Disposable;
+      };
+    }
+  ).chat;
 
   if (!chatApi?.createChatParticipant) {
     logger.info('VS Code chat API is not available in this runtime.');
@@ -324,15 +223,15 @@ export function registerCoolifyChatParticipant(
           return;
         }
 
-        const normalizedPrompt = normalize(prompt);
-        const appTarget = extractTarget(prompt);
-        const serviceTarget = extractServiceTarget(prompt);
-        const databaseTarget = extractDatabaseTarget(prompt);
-        const hasServiceIntent = looksLikeServiceIntent(normalizedPrompt);
-        const hasDatabaseIntent = looksLikeDatabaseIntent(normalizedPrompt);
-        const hasApplicationIntent = looksLikeApplicationIntent(normalizedPrompt);
+        const intent = routeIntent(prompt);
+        const target = extractTarget(prompt);
 
-        if (looksLikeConfigureIntent(normalizedPrompt)) {
+        if (intent.kind === 'help') {
+          writeMarkdown(stream, helpText());
+          return;
+        }
+
+        if (intent.kind === 'configure') {
           const selected = await vscode.window.showInformationMessage(
             'Deseja abrir o fluxo de configuração do Coolify nesta janela?',
             'Abrir configuração'
@@ -340,14 +239,11 @@ export function registerCoolifyChatParticipant(
 
           if (selected === 'Abrir configuração') {
             await vscode.commands.executeCommand('coolify.configure');
-            writeMarkdown(
-              stream,
-              'Fluxo de configuração iniciado nesta janela. Após concluir, posso executar deploy, logs e ações de ciclo de vida.'
-            );
+            writeMarkdown(stream, 'Fluxo de configuração iniciado nesta janela.');
           } else {
             writeMarkdown(
               stream,
-              'Configuração não iniciada automaticamente. Quando quiser, use o botão `Configurar` no painel do Coolify ou execute `Coolify: Configure`.'
+              'Configuração não iniciada. Use o botão `Configurar` no painel ou o comando `Coolify: Configure`.'
             );
           }
           return;
@@ -366,362 +262,337 @@ export function registerCoolifyChatParticipant(
           return;
         }
 
-        if (looksLikeHealthIntent(normalizedPrompt)) {
-          writeProgress(stream, 'Executando health checks...');
-          const serverUrl = await configManager.getServerUrl();
-          const token = await configManager.getToken();
-
-          if (!serverUrl || !token) {
-            writeMarkdown(stream, 'Configuração incompleta.');
-            return;
-          }
-
-          const service = new CoolifyService(serverUrl, token);
-          const [reachable, validToken] = await Promise.all([
-            service.testConnection(),
-            service.verifyToken(),
-          ]);
-
-          writeMarkdown(
-            stream,
-            [
-              `Servidor: ${serverUrl}`,
-              `Conectividade: ${reachable ? 'ok' : 'falhou'}`,
-              `Token API: ${validToken ? 'válido' : 'inválido'}`,
-            ].join('\n')
-          );
-          return;
-        }
-
-        if (
-          looksLikeListIntent(normalizedPrompt) &&
-          !looksLikeDeployIntent(normalizedPrompt) &&
-          hasServiceIntent
-        ) {
-          writeProgress(stream, 'Buscando serviços...');
-          const services = await provider.getServices();
-          if (!services.length) {
-            writeMarkdown(stream, 'Nenhum serviço encontrado.');
-            return;
-          }
-
-          const list = services
-            .map((service) => `- ${service.name} (${service.status})`)
-            .join('\n');
-          writeMarkdown(stream, `Serviços encontrados:\n${list}`);
-          return;
-        }
-
-        if (
-          looksLikeListIntent(normalizedPrompt) &&
-          !looksLikeDeployIntent(normalizedPrompt) &&
-          hasDatabaseIntent
-        ) {
-          writeProgress(stream, 'Buscando bancos de dados...');
-          const databases = await provider.getDatabases();
-          if (!databases.length) {
-            writeMarkdown(stream, 'Nenhum banco de dados encontrado.');
-            return;
-          }
-
-          const list = databases
-            .map((database) => `- ${database.name} (${database.status})`)
-            .join('\n');
-          writeMarkdown(stream, `Bancos de dados encontrados:\n${list}`);
-          return;
-        }
-
-        if (
-          looksLikeListIntent(normalizedPrompt) &&
-          !looksLikeDeployIntent(normalizedPrompt)
-        ) {
-          writeProgress(stream, 'Buscando aplicações...');
-          const applications = await provider.getApplications();
-          if (!applications.length) {
-            writeMarkdown(stream, 'Nenhuma aplicação encontrada.');
-            return;
-          }
-
-          const list = applications
-            .map((app) => `- ${app.name} (${app.status})`)
-            .join('\n');
-          writeMarkdown(stream, `Aplicações encontradas:\n${list}`);
-          return;
-        }
-
-        if (looksLikeStatusIntent(normalizedPrompt) && hasServiceIntent) {
-          writeProgress(stream, 'Consultando status de serviços...');
-          const services = await provider.getServices();
-          if (!services.length) {
-            writeMarkdown(stream, 'Nenhum serviço encontrado.');
-            return;
-          }
-
-          const service = findService(services, serviceTarget);
-          if (service) {
-            writeMarkdown(stream, `Status de ${service.name}: ${service.status}`);
-            return;
-          }
-
-          const statuses = services
-            .map((item) => `- ${item.name}: ${item.status}`)
-            .join('\n');
-          writeMarkdown(stream, `Status dos serviços:\n${statuses}`);
-          return;
-        }
-
-        if (looksLikeStatusIntent(normalizedPrompt) && hasDatabaseIntent) {
-          writeProgress(stream, 'Consultando status de bancos de dados...');
-          const databases = await provider.getDatabases();
-          if (!databases.length) {
-            writeMarkdown(stream, 'Nenhum banco de dados encontrado.');
-            return;
-          }
-
-          const database = findDatabase(databases, databaseTarget);
-          if (database) {
-            writeMarkdown(stream, `Status de ${database.name}: ${database.status}`);
-            return;
-          }
-
-          const statuses = databases
-            .map((item) => `- ${item.name}: ${item.status}`)
-            .join('\n');
-          writeMarkdown(stream, `Status dos bancos de dados:\n${statuses}`);
-          return;
-        }
-
-        if (looksLikeStatusIntent(normalizedPrompt)) {
-          writeProgress(stream, 'Consultando status...');
-          const applications = await provider.getApplications();
-          if (!applications.length) {
-            writeMarkdown(stream, 'Nenhuma aplicação encontrada.');
-            return;
-          }
-
-          const app = findApplication(applications, appTarget);
-          if (app) {
-            writeMarkdown(stream, `Status de ${app.name}: ${app.status}`);
-            return;
-          }
-
-          const statuses = applications
-            .map((application) => `- ${application.name}: ${application.status}`)
-            .join('\n');
-          writeMarkdown(stream, `Status das aplicações:\n${statuses}`);
-          return;
-        }
-
-        if (looksLikeDeployIntent(normalizedPrompt)) {
-          writeProgress(stream, 'Preparando deploy...');
-          const applications = await provider.getApplications();
-          if (!applications.length) {
-            writeMarkdown(stream, 'Nenhuma aplicação encontrada.');
-            return;
-          }
-
-          const app = findApplication(applications, appTarget);
-          if (!app) {
-            writeMarkdown(
-              stream,
-              'Não consegui identificar a aplicação. Use, por exemplo: `deploy da app "meu-app"`.'
-            );
-            return;
-          }
-
-          await provider.deployApplication(app.id);
-          writeMarkdown(stream, `Deploy iniciado para ${app.name}.`);
-          return;
-        }
-
-        if (looksLikeLogsIntent(normalizedPrompt)) {
-          writeProgress(stream, 'Buscando logs de deployment...');
-          const deployments = await provider.getDeployments();
-          if (!deployments.length) {
-            writeMarkdown(stream, 'Nenhum deployment encontrado.');
-            return;
-          }
-
-          const filtered = appTarget
-            ? deployments.filter((deployment) =>
-                normalize(deployment.applicationName).includes(normalize(appTarget))
-              )
-            : deployments;
-
-          if (!filtered.length) {
-            writeMarkdown(
-              stream,
-              'Não encontrei deployment para a aplicação informada.'
-            );
-            return;
-          }
-
-          const latest = [...filtered].sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          )[0];
-
-          const logs = await provider.getDeploymentLogs(latest.id);
-          const output = logs?.trim()
-            ? logs.slice(0, 3500)
-            : 'Sem logs disponíveis para este deployment.';
-
-          writeMarkdown(
-            stream,
-            `Logs do deployment ${latest.id} (${latest.applicationName}):\n\n\`\`\`log
-${output}
-\`\`\``
-          );
-          return;
-        }
-
-        const action = lifecycleAction(normalizedPrompt);
-        if (action) {
-          if (hasServiceIntent && !hasApplicationIntent) {
-            writeProgress(stream, `Executando ação ${action} no serviço...`);
-            const services = await provider.getServices();
-            if (!services.length) {
-              writeMarkdown(stream, 'Nenhum serviço encontrado.');
-              return;
-            }
-
-            const service = findService(services, serviceTarget);
-            if (!service) {
-              writeMarkdown(
-                stream,
-                `Não consegui identificar o serviço. Use, por exemplo: \`${action} do serviço "meu-servico"\`.`
-              );
-              return;
-            }
-
-            let result = '';
-            if (action === 'start') {
-              result = await provider.startService(service.id);
-            } else if (action === 'stop') {
-              result = await provider.stopService(service.id);
-            } else {
-              result = await provider.restartService(service.id);
-            }
-
-            writeMarkdown(stream, result || `Ação ${action} enviada para ${service.name}.`);
-            return;
-          }
-
-          if (hasDatabaseIntent && !hasApplicationIntent) {
-            writeProgress(stream, `Executando ação ${action} no banco de dados...`);
-            const databases = await provider.getDatabases();
-            if (!databases.length) {
-              writeMarkdown(stream, 'Nenhum banco de dados encontrado.');
-              return;
-            }
-
-            const database = findDatabase(databases, databaseTarget);
-            if (!database) {
-              writeMarkdown(
-                stream,
-                `Não consegui identificar o banco de dados. Use, por exemplo: \`${action} do banco "meu-banco"\`.`
-              );
-              return;
-            }
-
-            let result = '';
-            if (action === 'start') {
-              result = await provider.startDatabase(database.id);
-            } else if (action === 'stop') {
-              result = await provider.stopDatabase(database.id);
-            } else {
-              result = await provider.restartDatabase(database.id);
-            }
-
-            writeMarkdown(stream, result || `Ação ${action} enviada para ${database.name}.`);
-            return;
-          }
-
-          writeProgress(stream, `Executando ação ${action}...`);
-          const applications = await provider.getApplications();
-          if (!applications.length) {
-            writeMarkdown(stream, 'Nenhuma aplicação encontrada.');
-            return;
-          }
-
-          const app = findApplication(applications, appTarget);
-          if (!app) {
-            writeMarkdown(
-              stream,
-              `Não consegui identificar a aplicação. Use, por exemplo: \`${action} da app "meu-app"\`.`
-            );
-            return;
-          }
-
-          let result = '';
-          if (action === 'start') {
-            result = await provider.startApplication(app.id);
-          } else if (action === 'stop') {
-            result = await provider.stopApplication(app.id);
-          } else {
-            result = await provider.restartApplication(app.id);
-          }
-
-          writeMarkdown(stream, result || `Ação ${action} enviada para ${app.name}.`);
-          return;
-        }
-
-        writeMarkdown(stream, helpText());
+        await handleIntent(
+          intent,
+          target,
+          provider,
+          configManager,
+          stream
+        );
       } catch (error) {
         logger.error('Coolify chat participant failed', error);
-        writeMarkdown(
-          stream,
-          error instanceof Error
-            ? `Falha ao processar comando do chat: ${error.message}`
-            : 'Falha ao processar comando do chat.'
-        );
+        writeMarkdown(stream, describeResolutionError(error));
       }
     }
   );
 }
 
-function findService(
-  services: ServiceListItem[],
-  target?: string
-): ServiceListItem | undefined {
-  if (!target) {
-    return services.length === 1 ? services[0] : undefined;
-  }
+async function handleIntent(
+  intent: ChatIntent,
+  target: string | undefined,
+  provider: CoolifyProviderLike,
+  configManager: ConfigurationManager,
+  stream: ChatStreamLike
+): Promise<void> {
+  switch (intent.kind) {
+    case 'health': {
+      writeProgress(stream, 'Executando health checks...');
+      const serverUrl = await configManager.getServerUrl();
+      const token = await configManager.getToken();
 
-  const normalizedTarget = normalize(target);
-  const exact = services.find(
-    (service) =>
-      normalize(service.name) === normalizedTarget ||
-      normalize(service.id) === normalizedTarget
-  );
-  if (exact) {
-    return exact;
-  }
+      if (!serverUrl || !token) {
+        writeMarkdown(stream, 'Configuração incompleta.');
+        return;
+      }
 
-  return services.find((service) =>
-    normalize(service.name).includes(normalizedTarget)
-  );
+      const service = new CoolifyService(serverUrl, token);
+      const [reachable, validToken] = await Promise.all([
+        service.testConnection(),
+        service.verifyToken(),
+      ]);
+
+      writeMarkdown(
+        stream,
+        [
+          `Servidor: ${serverUrl}`,
+          `Conectividade: ${reachable ? 'ok' : 'falhou'}`,
+          `Token API: ${validToken ? 'válido' : 'inválido'}`,
+        ].join('\n')
+      );
+      return;
+    }
+
+    case 'servers': {
+      writeProgress(stream, 'Consultando servidores...');
+      const servers = await provider.getServers();
+      if (!servers.length) {
+        writeMarkdown(stream, 'Nenhum servidor encontrado.');
+        return;
+      }
+
+      const lines = servers.map((server) => {
+        const flags: string[] = [];
+        if (!server.reachable) {
+          flags.push(`⛔ inacessível (${server.unreachableCount} falhas)`);
+        }
+        if (server.highDiskUsage) {
+          flags.push('⚠️ disco cheio');
+        }
+        const suffix = flags.length ? ` — ${flags.join(', ')}` : ' — ok';
+        return `- **${server.name}** (${server.ip || 'sem ip'})${suffix}`;
+      });
+
+      writeMarkdown(stream, `Servidores:\n${lines.join('\n')}`);
+      return;
+    }
+
+    case 'list': {
+      writeProgress(stream, 'Buscando recursos...');
+      const items = await listByResource(provider, intent.resource);
+
+      if (!items.length) {
+        writeMarkdown(stream, 'Nenhum recurso encontrado.');
+        return;
+      }
+
+      const list = items
+        .map((item) => `- ${item.name} (${describeStatus(item.status)})`)
+        .join('\n');
+      writeMarkdown(stream, `Encontrados ${items.length}:\n${list}`);
+      return;
+    }
+
+    case 'status': {
+      writeProgress(stream, 'Consultando status...');
+      const items = await listByResource(provider, intent.resource);
+
+      if (!items.length) {
+        writeMarkdown(stream, 'Nenhum recurso encontrado.');
+        return;
+      }
+
+      if (!target) {
+        const statuses = items
+          .map((item) => `- ${item.name}: ${describeStatus(item.status)}`)
+          .join('\n');
+        writeMarkdown(stream, `Status:\n${statuses}`);
+        return;
+      }
+
+      // Reads may fall back to the single resource; this is safe.
+      const item = resolveTarget(items, undefined, target, {
+        entityLabel: intent.resource,
+        allowSingleFallback: true,
+      });
+      writeMarkdown(
+        stream,
+        `Status de ${item.name}: ${describeStatus(item.status)}`
+      );
+      return;
+    }
+
+    case 'deployments': {
+      writeProgress(stream, 'Buscando histórico de deployments...');
+      const applications = await provider.getApplications();
+      if (!applications.length) {
+        writeMarkdown(stream, 'Nenhuma aplicação encontrada.');
+        return;
+      }
+
+      const app = resolveTarget(toResolvable(applications), undefined, target, {
+        entityLabel: 'aplicação',
+        allowSingleFallback: true,
+      });
+
+      // /deployments only lists what is running now; history lives per app.
+      const deployments = await provider.getDeploymentsByApplication(app.uuid, 0, 10);
+      if (!deployments.length) {
+        writeMarkdown(stream, `Nenhum deployment encontrado para ${app.name}.`);
+        return;
+      }
+
+      const list = deployments
+        .map(
+          (deployment) =>
+            `- \`${deployment.status}\` — ${
+              deployment.createdAt
+                ? new Date(deployment.createdAt).toLocaleString('pt-BR')
+                : 'sem data'
+            } (id: ${deployment.id})`
+        )
+        .join('\n');
+
+      writeMarkdown(stream, `Deployments de **${app.name}**:\n${list}`);
+      return;
+    }
+
+    case 'logs': {
+      writeProgress(stream, 'Buscando logs...');
+      const applications = await provider.getApplications();
+      if (!applications.length) {
+        writeMarkdown(stream, 'Nenhuma aplicação encontrada.');
+        return;
+      }
+
+      const app = resolveTarget(toResolvable(applications), undefined, target, {
+        entityLabel: 'aplicação',
+        allowSingleFallback: true,
+      });
+
+      const runtimeLogs = await provider
+        .getApplicationRuntimeLogs(app.uuid)
+        .catch(() => '');
+
+      if (runtimeLogs.trim()) {
+        writeMarkdown(
+          stream,
+          `Logs do container **${app.name}**:\n\n\`\`\`log\n${runtimeLogs.slice(-3500)}\n\`\`\``
+        );
+        return;
+      }
+
+      const deployments = await provider.getDeploymentsByApplication(app.uuid, 0, 1);
+      if (!deployments.length) {
+        writeMarkdown(
+          stream,
+          `Sem logs de runtime e nenhum deployment registrado para ${app.name}.`
+        );
+        return;
+      }
+
+      const logs = await provider.getDeploymentLogs(deployments[0].id);
+      const output = logs?.trim()
+        ? logs.slice(-3500)
+        : 'Sem logs disponíveis para este deployment.';
+
+      writeMarkdown(
+        stream,
+        `Logs do último deployment de **${app.name}** (${deployments[0].status}):\n\n\`\`\`log\n${output}\n\`\`\``
+      );
+      return;
+    }
+
+    case 'deploy': {
+      const applications = await provider.getApplications();
+      if (!applications.length) {
+        writeMarkdown(stream, 'Nenhuma aplicação encontrada.');
+        return;
+      }
+
+      // A deploy changes production. No single-application fallback here: the
+      // user must name the target, otherwise an ambiguous message could ship.
+      const app = resolveTarget(toResolvable(applications), undefined, target, {
+        entityLabel: 'aplicação',
+        allowSingleFallback: false,
+      });
+
+      const confirmed = await confirmAction(
+        configManager,
+        'deploy',
+        app.name,
+        'Uma nova versão será construída e publicada, substituindo a atual.'
+      );
+
+      if (!confirmed) {
+        writeMarkdown(stream, 'Deploy cancelado.');
+        return;
+      }
+
+      writeProgress(stream, 'Iniciando deploy...');
+      await provider.deployApplication(app.uuid);
+      writeMarkdown(stream, `Deploy iniciado para **${app.name}**.`);
+      return;
+    }
+
+    case 'lifecycle': {
+      const items = await listByResource(provider, intent.resource);
+      if (!items.length) {
+        writeMarkdown(stream, 'Nenhum recurso encontrado.');
+        return;
+      }
+
+      const item = resolveTarget(items, undefined, target, {
+        entityLabel: intent.resource,
+        allowSingleFallback: false,
+      });
+
+      const confirmed = await confirmAction(
+        configManager,
+        intent.action,
+        item.name,
+        lifecycleImpact(intent.action, intent.resource)
+      );
+
+      if (!confirmed) {
+        writeMarkdown(stream, `Ação ${intent.action} cancelada.`);
+        return;
+      }
+
+      writeProgress(stream, `Executando ${intent.action}...`);
+      const result = await runLifecycle(
+        provider,
+        intent.resource,
+        intent.action,
+        item.uuid
+      );
+
+      writeMarkdown(
+        stream,
+        result || `Ação ${intent.action} enviada para ${item.name}.`
+      );
+      return;
+    }
+
+    default:
+      writeMarkdown(stream, helpText());
+  }
 }
 
-function findDatabase(
-  databases: DatabaseListItem[],
-  target?: string
-): DatabaseListItem | undefined {
-  if (!target) {
-    return databases.length === 1 ? databases[0] : undefined;
+/** Adapts the provider list items to the shape the resolver expects. */
+function toResolvable(
+  items: Array<{ id: string; name: string; status?: string }>
+): Array<{ uuid: string; name: string; status: string }> {
+  return items.map((item) => ({
+    uuid: item.id,
+    name: item.name,
+    status: item.status || 'unknown',
+  }));
+}
+
+async function listByResource(
+  provider: CoolifyProviderLike,
+  resource: ResourceKind
+): Promise<Array<{ uuid: string; name: string; status: string }>> {
+  if (resource === 'service') {
+    return toResolvable(await provider.getServices());
+  }
+  if (resource === 'database') {
+    return toResolvable(await provider.getDatabases());
+  }
+  return toResolvable(await provider.getApplications());
+}
+
+async function runLifecycle(
+  provider: CoolifyProviderLike,
+  resource: ResourceKind,
+  action: 'start' | 'stop' | 'restart',
+  id: string
+): Promise<string> {
+  if (resource === 'service') {
+    if (action === 'start') {
+      return provider.startService(id);
+    }
+    if (action === 'stop') {
+      return provider.stopService(id);
+    }
+    return provider.restartService(id);
   }
 
-  const normalizedTarget = normalize(target);
-  const exact = databases.find(
-    (database) =>
-      normalize(database.name) === normalizedTarget ||
-      normalize(database.id) === normalizedTarget
-  );
-  if (exact) {
-    return exact;
+  if (resource === 'database') {
+    if (action === 'start') {
+      return provider.startDatabase(id);
+    }
+    if (action === 'stop') {
+      return provider.stopDatabase(id);
+    }
+    return provider.restartDatabase(id);
   }
 
-  return databases.find((database) =>
-    normalize(database.name).includes(normalizedTarget)
-  );
+  if (action === 'start') {
+    return provider.startApplication(id);
+  }
+  if (action === 'stop') {
+    return provider.stopApplication(id);
+  }
+  return provider.restartApplication(id);
 }

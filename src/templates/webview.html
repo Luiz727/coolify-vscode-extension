@@ -963,6 +963,37 @@
       </div>
     </div>
 
+    <div class="section" id="servers-section">
+      <div class="section-header">
+        <div class="section-heading">
+          <div class="section-title-group">
+            <h3 id="servers-title">Servers</h3>
+            <span id="servers-count" class="section-count">0</span>
+          </div>
+          <p id="servers-subtitle" class="section-subtitle">Machine health behind your resources.</p>
+        </div>
+        <div class="header-controls">
+          <button
+            class="section-toggle-button"
+            id="toggle-servers"
+            type="button"
+            data-section-id="servers"
+            aria-expanded="true"
+          >
+            ▾
+          </button>
+        </div>
+      </div>
+      <div class="section-body" id="servers-section-body">
+        <div id="servers" class="cards-container">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+            <span id="loading-servers">Loading servers...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const uiLanguage = '${uiLanguage}' === 'pt-BR' ? 'pt-BR' : 'en';
@@ -994,6 +1025,15 @@
           noServices: 'No services found',
           noDatabases: 'No databases found',
           noProjects: 'No projects found',
+          serversTitle: 'Servers',
+          serversSubtitle: 'Machine health behind your resources.',
+          loadingServers: 'Loading servers...',
+          noServers: 'No servers found',
+          serverOk: 'Reachable',
+          serverProblem: 'Attention',
+          serverUnreachable: 'Unreachable from Coolify',
+          serverHighDisk: 'High disk usage reported',
+          serverNoIp: 'no IP',
           openInCoolify: 'Open',
           unknown: 'Unknown',
           noUrlConfigured: 'No URL configured',
@@ -1037,10 +1077,15 @@
           databaseDetailsLoading: 'Loading database details...',
           databaseDetailsEmpty: 'No database details available',
           backups: 'Backups',
-          createBackup: 'Create backup',
-          restoreBackup: 'Restore',
+          createBackup: 'New schedule',
+          runBackupNow: 'Run now',
+          backupFrequency: 'Frequency:',
+          backupEnabled: 'enabled',
+          backupDisabled: 'disabled',
+          backupRestoreNote:
+            'Restoring is not available through the Coolify API — see OPERATIONAL_GUIDE.md.',
           backupLoading: 'Loading backups...',
-          backupEmpty: 'No backups found',
+          backupEmpty: 'No backup schedules configured',
           backupCreatedAt: 'Created:',
           backupSize: 'Size:',
           deploymentLogsLoading: 'Loading deployment logs...',
@@ -1085,6 +1130,15 @@
           noServices: 'Nenhum serviço encontrado',
           noDatabases: 'Nenhum banco de dados encontrado',
           noProjects: 'Nenhum projeto encontrado',
+          serversTitle: 'Servidores',
+          serversSubtitle: 'Saude das maquinas por tras dos recursos.',
+          loadingServers: 'Carregando servidores...',
+          noServers: 'Nenhum servidor encontrado',
+          serverOk: 'Acessivel',
+          serverProblem: 'Atencao',
+          serverUnreachable: 'Inacessivel pelo Coolify',
+          serverHighDisk: 'Alerta de disco cheio',
+          serverNoIp: 'sem IP',
           openInCoolify: 'Abrir',
           unknown: 'Desconhecido',
           noUrlConfigured: 'Sem URL configurada',
@@ -1128,10 +1182,15 @@
           databaseDetailsLoading: 'Carregando detalhes do banco de dados...',
           databaseDetailsEmpty: 'Sem detalhes do banco de dados disponíveis',
           backups: 'Backups',
-          createBackup: 'Criar backup',
-          restoreBackup: 'Restaurar',
+          createBackup: 'Novo agendamento',
+          runBackupNow: 'Executar agora',
+          backupFrequency: 'Frequencia:',
+          backupEnabled: 'ativo',
+          backupDisabled: 'inativo',
+          backupRestoreNote:
+            'Restauracao nao existe na API do Coolify — ver OPERATIONAL_GUIDE.md.',
           backupLoading: 'Carregando backups...',
-          backupEmpty: 'Nenhum backup encontrado',
+          backupEmpty: 'Nenhum agendamento de backup configurado',
           backupCreatedAt: 'Criado em:',
           backupSize: 'Tamanho:',
           deploymentLogsLoading: 'Carregando logs do deployment...',
@@ -1177,6 +1236,9 @@
           'projects-title': t('projectsTitle'),
           'projects-subtitle': t('projectsSubtitle'),
           'loading-projects': t('loadingProjects'),
+          'servers-title': t('serversTitle'),
+          'servers-subtitle': t('serversSubtitle'),
+          'loading-servers': t('loadingServers'),
           'favorites-only-label': t('favoritesOnly'),
           'env-actions-label': t('envActionsLabel'),
           'context-label': t('contextLabel'),
@@ -1277,6 +1339,7 @@
       let lastServices = [];
       let lastDatabases = [];
       let lastProjects = [];
+      let lastServers = [];
       let currentUiState = 'loading';
       const refreshButton = document.getElementById('refresh-button');
       const statusFilter = document.getElementById('status-filter');
@@ -1327,6 +1390,13 @@
           bodyId: 'projects-section-body',
           titleId: 'projects-title',
           countId: 'projects-count',
+        },
+        {
+          id: 'servers',
+          toggleButtonId: 'toggle-servers',
+          bodyId: 'servers-section-body',
+          titleId: 'servers-title',
+          countId: 'servers-count',
         },
       ];
 
@@ -1524,6 +1594,7 @@
           previousState.services,
           previousState.databases,
           previousState.projects,
+          previousState.servers,
           availableContexts,
           activeContextName
         );
@@ -1542,6 +1613,7 @@
           services: lastServices,
           databases: lastDatabases,
           projects: lastProjects,
+          servers: lastServers,
           currentUiState,
           selectedContainerStatus,
           collapsedSectionIds: Array.from(collapsedSections),
@@ -1892,8 +1964,13 @@
         vscode.postMessage({ type: 'create-database-backup', databaseId });
       }
 
-      function restoreDatabaseBackup(databaseId, backupId) {
-        vscode.postMessage({ type: 'restore-database-backup', databaseId, backupId });
+      // There is no restore endpoint in the Coolify API — restoring is a manual
+      // procedure on the server (see docs/OPERATIONAL_GUIDE.md §6). What the API
+      // does support is triggering an existing schedule to run right now.
+      function runDatabaseBackupNow(databaseId, scheduleId) {
+        loadingDatabaseBackupPanels.add(databaseId);
+        renderDatabases(lastDatabases);
+        vscode.postMessage({ type: 'run-database-backup', databaseId, scheduleId });
       }
 
       function listProjectDetails(projectId) {
@@ -2003,32 +2080,71 @@
         return new Date(dateString).toLocaleString(locale);
       }
 
-      function parseStatus(status) {
-        const rawStatus = String(status || 'unknown').toLowerCase();
-        const [containerPart, healthPart] = rawStatus.split(':');
-        const containerStatus = containerPart || 'unknown';
+      // Container status -> operational bucket.
+      // Mirrors src/utils/resourceStatus.ts and the web backend's status.js.
+      const CONTAINER_BUCKET = {
+        running: 'running',
+        healthy: 'running',
+        starting: 'starting',
+        restarting: 'starting',
+        created: 'starting',
+        initializing: 'starting',
+        degraded: 'degraded',
+        exited: 'stopped',
+        stopped: 'stopped',
+        paused: 'stopped',
+        removing: 'stopped',
+        dead: 'error',
+        error: 'error',
+        failed: 'error',
+      };
 
-        let healthStatus = healthPart;
-        if (!healthStatus) {
-          if (rawStatus.includes('healthy')) {
-            healthStatus = 'healthy';
-          } else if (rawStatus.includes('unhealthy')) {
-            healthStatus = 'unhealthy';
-          }
+      function parseStatus(status) {
+        const rawStatus = String(status || 'unknown').toLowerCase().trim();
+        const separatorIndex = rawStatus.indexOf(':');
+        const containerStatus =
+          (separatorIndex >= 0 ? rawStatus.slice(0, separatorIndex) : rawStatus).trim() ||
+          'unknown';
+        const healthPart =
+          separatorIndex >= 0 ? rawStatus.slice(separatorIndex + 1).trim() : '';
+
+        // Order matters: the string "unhealthy" contains "healthy", so the
+        // negative case has to be tested first or an unhealthy container is
+        // reported as healthy.
+        const healthSource = healthPart || rawStatus;
+        let healthStatus = 'unknown';
+        if (healthSource.includes('unhealthy')) {
+          healthStatus = 'unhealthy';
+        } else if (healthSource.includes('healthy')) {
+          healthStatus = 'healthy';
+        } else if (healthPart) {
+          healthStatus = healthPart;
         }
 
-        return {
-          containerStatus,
-          healthStatus: healthStatus || 'unknown',
-        };
+        let bucket = CONTAINER_BUCKET[containerStatus];
+        if (!bucket) {
+          bucket =
+            rawStatus.includes('error') ||
+            rawStatus.includes('fail') ||
+            rawStatus.includes('crash')
+              ? 'error'
+              : 'unknown';
+        }
+
+        // Up but failing its healthcheck is degraded, never running.
+        if (bucket === 'running' && healthStatus === 'unhealthy') {
+          bucket = 'degraded';
+        }
+
+        return { containerStatus, healthStatus, bucket };
       }
 
       function getHealthClass(healthStatus) {
-        if (healthStatus === 'healthy') {
-          return 'status-health-healthy';
-        }
         if (healthStatus === 'unhealthy' || healthStatus === 'failed') {
           return 'status-health-unhealthy';
+        }
+        if (healthStatus === 'healthy') {
+          return 'status-health-healthy';
         }
         if (healthStatus === 'starting' || healthStatus === 'initializing') {
           return 'status-health-starting';
@@ -2120,6 +2236,7 @@
               message.services,
               message.databases,
               message.projects,
+              message.servers,
               message.contextNames,
               message.activeContextName,
               message.envSyncConflictStrategy
@@ -2658,19 +2775,19 @@
               createElement('div', 'env-empty', t('backupLoading'))
             );
           } else {
-            const backups = databaseBackupsById[database.id] || [];
-            if (!Array.isArray(backups) || backups.length === 0) {
+            // These are backup *schedules* (frequency, target), not backup files.
+            const schedules = databaseBackupsById[database.id] || [];
+            if (!Array.isArray(schedules) || schedules.length === 0) {
               backupsPanel.appendChild(
                 createElement('div', 'env-empty', t('backupEmpty'))
               );
             } else {
-              backups.forEach((backup) => {
+              schedules.forEach((schedule) => {
                 const row = createElement('div', 'env-row');
                 const details = [
-                  backup.name || backup.id,
-                  backup.createdAt ? `${t('backupCreatedAt')} ${backup.createdAt}` : '',
-                  backup.size ? `${t('backupSize')} ${backup.size}` : '',
-                  backup.status || '',
+                  `${t('backupFrequency')} ${schedule.frequency || '—'}`,
+                  schedule.enabled ? t('backupEnabled') : t('backupDisabled'),
+                  schedule.saveS3 ? 'S3' : '',
                 ]
                   .filter((item) => !!item)
                   .join(' • ');
@@ -2678,20 +2795,24 @@
                 row.appendChild(createElement('span', 'env-key', details));
 
                 const actions = createElement('div', 'env-actions');
-                const restoreButton = createElement(
+                const runNowButton = createElement(
                   'button',
                   'secondary-button',
-                  t('restoreBackup')
+                  t('runBackupNow')
                 );
-                restoreButton.type = 'button';
-                restoreButton.addEventListener('click', () =>
-                  restoreDatabaseBackup(database.id, backup.id)
+                runNowButton.type = 'button';
+                runNowButton.addEventListener('click', () =>
+                  runDatabaseBackupNow(database.id, schedule.uuid)
                 );
-                actions.appendChild(restoreButton);
+                actions.appendChild(runNowButton);
                 row.appendChild(actions);
 
                 backupsPanel.appendChild(row);
               });
+
+              backupsPanel.appendChild(
+                createElement('div', 'env-empty', t('backupRestoreNote'))
+              );
             }
           }
 
@@ -2837,6 +2958,7 @@
         services,
         databases,
         projects,
+        servers,
         contextNames,
         activeContext,
         nextEnvSyncConflictStrategy
@@ -2846,6 +2968,7 @@
         lastServices = Array.isArray(services) ? services : [];
         lastDatabases = Array.isArray(databases) ? databases : [];
         lastProjects = Array.isArray(projects) ? projects : [];
+        lastServers = Array.isArray(servers) ? servers : [];
         availableContexts = Array.isArray(contextNames) ? contextNames : availableContexts;
         activeContextName = activeContext || activeContextName;
         envSyncConflictStrategy =
@@ -2864,6 +2987,7 @@
         renderServices(lastServices);
         renderDatabases(lastDatabases);
         renderProjects(lastProjects);
+        renderServers(lastServers);
         persistState();
       }
 
@@ -2990,6 +3114,90 @@
         }
 
         projectsContainer.replaceChildren(...projectNodes);
+      }
+
+      /**
+       * Server card.
+       *
+       * Surfaces the root-cause signals Coolify already exposes but the panel
+       * never showed: an unreachable machine or a full disk explains why several
+       * unrelated resources went down at the same time.
+       */
+      function createServerCard(server) {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const header = document.createElement('div');
+        header.className = 'card-header';
+
+        const title = document.createElement('div');
+        title.className = 'card-title';
+        title.textContent = server.name || server.id;
+        header.appendChild(title);
+
+        const statusBadge = document.createElement('span');
+        const healthy = server.reachable && !server.highDiskUsage;
+        statusBadge.className =
+          'status ' + (healthy ? 'status-health-healthy' : 'status-health-unhealthy');
+        statusBadge.textContent = healthy ? t('serverOk') : t('serverProblem');
+        header.appendChild(statusBadge);
+
+        card.appendChild(header);
+
+        const meta = document.createElement('div');
+        meta.className = 'card-subtitle';
+        meta.textContent = [
+          server.ip || t('serverNoIp'),
+          'proxy: ' + (server.proxyType || 'none'),
+        ].join(' · ');
+        card.appendChild(meta);
+
+        if (!server.reachable) {
+          const unreachable = document.createElement('div');
+          unreachable.className = 'card-subtitle';
+          unreachable.textContent =
+            t('serverUnreachable') + ' (' + (server.unreachableCount || 0) + ')';
+          card.appendChild(unreachable);
+        }
+
+        if (server.highDiskUsage) {
+          const disk = document.createElement('div');
+          disk.className = 'card-subtitle';
+          disk.textContent = t('serverHighDisk');
+          card.appendChild(disk);
+        }
+
+        return card;
+      }
+
+      function renderServers(servers) {
+        const serversContainer = document.getElementById('servers');
+        if (!serversContainer) {
+          return;
+        }
+
+        const serverNodes = [];
+        updateSectionCount('servers', Array.isArray(servers) ? servers.length : 0);
+
+        if (collapsedSections.has('servers')) {
+          return;
+        }
+
+        if (!Array.isArray(servers) || servers.length === 0) {
+          serverNodes.push(createEmptyElement(t('noServers')));
+        } else {
+          // Problem machines first — that is what the operator is looking for.
+          [...servers]
+            .sort((a, b) => {
+              const scoreA = (a.reachable ? 0 : 2) + (a.highDiskUsage ? 1 : 0);
+              const scoreB = (b.reachable ? 0 : 2) + (b.highDiskUsage ? 1 : 0);
+              if (scoreA !== scoreB) return scoreB - scoreA;
+              return String(a.name).localeCompare(String(b.name));
+            })
+            .forEach((server) => serverNodes.push(createServerCard(server)));
+        }
+
+        serversContainer.replaceChildren(...serverNodes);
       }
     </script>
   </body>

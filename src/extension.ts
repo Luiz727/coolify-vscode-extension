@@ -897,8 +897,6 @@ export function activate(context: vscode.ExtensionContext) {
         await webviewProvider.createEnvironmentVariable(selectedApp.id, {
           key,
           value,
-          is_buildtime: true,
-          is_runtime: true,
           is_preview: false,
         });
 
@@ -978,8 +976,8 @@ export function activate(context: vscode.ExtensionContext) {
           return;
         }
 
+        // The API identifies the variable by key, not by uuid.
         await webviewProvider.updateEnvironmentVariable(selectedApp.id, {
-          uuid: selectedEnvItem.env.uuid,
           key: selectedEnvItem.env.key,
           value: nextValue,
         });
@@ -1311,50 +1309,50 @@ export function activate(context: vscode.ExtensionContext) {
             cancellable: false,
           },
           async (progress) => {
-            let step = 0;
-            const totalSteps =
-              toCreate.length + toUpdate.length + (removeMissing ? toDelete.length : 0);
-
-            const reportProgress = (message: string) => {
-              step += 1;
-              progress.report({
-                increment: totalSteps > 0 ? 100 / totalSteps : 100,
-                message,
-              });
-            };
-
-            for (const item of toCreate) {
-              await webviewProvider!.createEnvironmentVariable(selectedApp.id, {
+            // Creates + updates go in a single bulk request. Syncing a 50-key
+            // .env used to mean 50 sequential round trips to the VPS.
+            const bulkPayload = [
+              ...toCreate.map((item) => ({
                 key: item.key,
                 value: item.value,
-                is_buildtime: true,
-                is_runtime: true,
                 is_preview: false,
-              });
-              reportProgress(`Created ${item.key}`);
-            }
-
-            for (const item of toUpdate) {
-              await webviewProvider!.updateEnvironmentVariable(selectedApp.id, {
-                uuid: item.remote.uuid,
+              })),
+              ...toUpdate.map((item) => ({
                 key: item.key,
                 value: item.value,
-                is_buildtime: item.remote.is_buildtime,
-                is_runtime: item.remote.is_runtime,
                 is_preview: item.remote.is_preview,
                 is_literal: item.remote.is_literal,
                 is_multiline: item.remote.is_multiline,
+              })),
+            ];
+
+            if (bulkPayload.length > 0) {
+              progress.report({
+                increment: 0,
+                message: `Aplicando ${bulkPayload.length} variavel(is)...`,
               });
-              reportProgress(`Updated ${item.key}`);
+              await webviewProvider!.updateEnvironmentVariablesBulk(
+                selectedApp.id,
+                bulkPayload
+              );
+              progress.report({
+                increment: removeMissing ? 60 : 100,
+                message: 'Variaveis aplicadas.',
+              });
             }
 
-            if (removeMissing) {
+            if (removeMissing && toDelete.length > 0) {
+              // Deletion has no bulk endpoint; it stays sequential.
+              const deleteIncrement = 40 / toDelete.length;
               for (const item of toDelete) {
                 await webviewProvider!.deleteEnvironmentVariable(
                   selectedApp.id,
                   item.uuid
                 );
-                reportProgress(`Deleted ${item.key}`);
+                progress.report({
+                  increment: deleteIncrement,
+                  message: `Removido ${item.key}`,
+                });
               }
             }
           }

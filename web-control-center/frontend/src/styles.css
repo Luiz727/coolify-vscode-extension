@@ -158,7 +158,8 @@ body {
 
 .summary-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* One card per status bucket plus the total, so the numbers always add up. */
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 10px;
 }
 
@@ -183,6 +184,19 @@ body {
 
 .stat.error {
   border-left: 5px solid #b02f2f;
+}
+
+.stat.degraded {
+  border-left: 5px solid #d4761a;
+}
+
+.stat.unknown {
+  border-left: 5px solid #88929e;
+}
+
+.stat.total {
+  border-left: 5px solid var(--ink);
+  background: #faf8f3;
 }
 
 .stat-label {
@@ -322,6 +336,11 @@ body {
 
 .dot.unknown {
   background: #88929e;
+}
+
+/* A container that is up but failing its healthcheck is not green. */
+.dot.degraded {
+  background: #d4761a;
 }
 
 .status-text {
@@ -577,6 +596,410 @@ body {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Operational safety and freshness
+   --------------------------------------------------------------------------- */
+
+/* Stale data must never look live: the operator has to know the screen froze. */
+.stale-banner {
+  padding: 8px 20px;
+  background: #fdf2e2;
+  border-bottom: 1px solid var(--warning);
+  color: #7a4a08;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.attention-banner {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fdecec;
+  border: 1px solid var(--danger);
+  color: #7d1f1f;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.actor-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #f8f6f0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.resource-card.attention {
+  border-left: 4px solid var(--danger);
+}
+
+.health-flag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7a4a08;
+  background: #fdf2e2;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.btn.warn {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--line));
+  background: #fdf6ec;
+}
+
+.btn.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn.danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Confirmation dialog for state-changing actions --- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 14, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+
+.modal-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.25);
+}
+
+.modal-card h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.modal-body {
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.modal-line {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.modal-warning {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fdf2e2;
+  border: 1px solid var(--warning);
+  color: #7a4a08;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.modal-confirm-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.modal-confirm-input input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* --- Runtime vs deployment log tabs --- */
+
+.log-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.log-tab {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8f6f0;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.log-tab.active {
+  border-color: var(--accent);
+  background: #eaf6f2;
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   Infrastructure (VPS) panel
+   --------------------------------------------------------------------------- */
+
+.content-grid.infra {
+  grid-template-columns: 1fr;
+}
+
+.center-panel.wide {
+  min-width: 0;
+}
+
+.vps-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.vps-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Time-range control sits in one row above the charts. */
+.window-picker {
+  display: flex;
+  gap: 6px;
+}
+
+.vps-collected {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.vps-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: #fff;
+}
+
+.vps-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.vps-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.metric-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+/* --- Small multiples: one single-series chart per metric. --------------------
+   Identity comes from the tile title, never from the line color, which frees
+   color to carry state (normal / warning / critical). Every state is also
+   spelled out in .metric-flag, so color never carries meaning alone. */
+
+.metric-tile {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--panel);
+
+  /* Chart roles. Validated against the panel surface (#fffdfa):
+     all three clear the lightness band, chroma floor and 3:1 contrast. */
+  --chart-normal: #2a78d6;
+  --chart-warning: #cb7f1f;
+  --chart-critical: #b02f2f;
+  --chart-grid: #e1e0d9;
+}
+
+.metric-tile.role-warning {
+  border-left: 4px solid var(--chart-warning);
+}
+
+.metric-tile.role-critical {
+  border-left: 4px solid var(--chart-critical);
+}
+
+.metric-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.metric-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.metric-value.small {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metric-chart {
+  display: block;
+  width: 100%;
+  height: 64px;
+}
+
+/* 2px stroke, recessive fill — thin marks, no heavy ink. */
+.metric-line {
+  fill: none;
+  stroke: var(--chart-normal);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.metric-area {
+  fill: var(--chart-normal);
+  opacity: 0.12;
+  stroke: none;
+}
+
+.metric-chart.role-warning .metric-line {
+  stroke: var(--chart-warning);
+}
+
+.metric-chart.role-warning .metric-area {
+  fill: var(--chart-warning);
+}
+
+.metric-chart.role-critical .metric-line {
+  stroke: var(--chart-critical);
+}
+
+.metric-chart.role-critical .metric-area {
+  fill: var(--chart-critical);
+}
+
+.chart-empty {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 6px,
+    var(--chart-grid) 6px,
+    var(--chart-grid) 7px
+  );
+  border-radius: 6px;
+}
+
+.metric-foot {
+  margin-top: 6px;
+}
+
+/* Icon + label pairing: the mitigation that keeps status legible without hue. */
+.metric-flag {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.metric-flag.normal {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.metric-flag.warning {
+  color: #7a4a08;
+}
+
+.metric-flag.critical {
+  color: var(--danger);
+}
+
+.vps-restore {
+  margin-top: 14px;
+}
+
+.vps-restore-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.vps-restore-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.blast-radius {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  background: #faf8f3;
+}
+
+.blast-radius ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.modal-warning.irreversible {
+  background: #fdecec;
+  border-color: var(--danger);
+  color: #7d1f1f;
+}
+
+.modal-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
 @media (max-width: 780px) {
   .topbar {
     flex-direction: column;
@@ -584,10 +1007,6 @@ body {
   }
 
   .search {
-    width: 100%;
-  }
-
-  .actor-input {
     width: 100%;
   }
 

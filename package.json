@@ -24,13 +24,23 @@
     "onLanguageModelTool:coolify-healthCheck",
     "onLanguageModelTool:coolify-listApplications",
     "onLanguageModelTool:coolify-getApplicationStatus",
+    "onLanguageModelTool:coolify-getApplicationLogs",
+    "onLanguageModelTool:coolify-listApplicationEnvs",
+    "onLanguageModelTool:coolify-setApplicationEnv",
     "onLanguageModelTool:coolify-startDeployment",
     "onLanguageModelTool:coolify-applicationLifecycle",
+    "onLanguageModelTool:coolify-listDeployments",
     "onLanguageModelTool:coolify-getDeploymentLogs",
+    "onLanguageModelTool:coolify-cancelDeployment",
     "onLanguageModelTool:coolify-listServices",
     "onLanguageModelTool:coolify-serviceLifecycle",
     "onLanguageModelTool:coolify-listDatabases",
     "onLanguageModelTool:coolify-databaseLifecycle",
+    "onLanguageModelTool:coolify-listDatabaseBackups",
+    "onLanguageModelTool:coolify-runDatabaseBackup",
+    "onLanguageModelTool:coolify-listProjects",
+    "onLanguageModelTool:coolify-listServers",
+    "onLanguageModelTool:coolify-getServerResources",
     "onView:coolify-deployments",
     "onCommand:coolify.configure",
     "onCommand:coolify.reconfigure",
@@ -73,7 +83,7 @@
         "name": "coolify-configure",
         "toolReferenceName": "coolifyConfigure",
         "displayName": "Coolify Configurar",
-        "modelDescription": "Inicia o fluxo de configuração do Coolify para definir URL do servidor e token da API com segurança.",
+        "modelDescription": "Inicia o fluxo de configuracao do Coolify para definir URL do servidor e token da API com seguranca.",
         "userDescription": "Configura URL e token da API do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -89,7 +99,7 @@
       {
         "name": "coolify-healthCheck",
         "toolReferenceName": "coolifyHealthCheck",
-        "displayName": "Coolify Verificar Saúde",
+        "displayName": "Coolify Verificar Saude",
         "modelDescription": "Verifica conectividade com o Coolify e validade do token da API.",
         "userDescription": "Valida conectividade e token do Coolify.",
         "canBeReferencedInPrompt": true,
@@ -106,9 +116,9 @@
       {
         "name": "coolify-listApplications",
         "toolReferenceName": "coolifyListApplications",
-        "displayName": "Coolify Listar Aplicações",
-        "modelDescription": "Lista aplicações disponíveis no Coolify com status e metadados.",
-        "userDescription": "Lista aplicações do Coolify.",
+        "displayName": "Coolify Listar Aplicacoes",
+        "modelDescription": "Lista todas as aplicacoes do Coolify com status, saude do healthcheck, branch e dominio.",
+        "userDescription": "Lista aplicacoes do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
           "coolify",
@@ -123,13 +133,13 @@
       {
         "name": "coolify-getApplicationStatus",
         "toolReferenceName": "coolifyGetApplicationStatus",
-        "displayName": "Coolify Status da Aplicação",
-        "modelDescription": "Obtém detalhes de status de uma aplicação do Coolify por id ou nome.",
-        "userDescription": "Consulta status de uma aplicação do Coolify.",
+        "displayName": "Coolify Status da Aplicacao",
+        "modelDescription": "Consulta status detalhado de uma aplicacao, incluindo se o healthcheck esta falhando.",
+        "userDescription": "Consulta status de uma aplicacao.",
         "canBeReferencedInPrompt": true,
         "tags": [
           "coolify",
-          "status"
+          "applications"
         ],
         "icon": "$(info)",
         "inputSchema": {
@@ -137,13 +147,107 @@
           "properties": {
             "appId": {
               "type": "string",
-              "description": "Application UUID in Coolify."
+              "description": "UUID da aplicacao no Coolify."
             },
             "appName": {
               "type": "string",
-              "description": "Application name in Coolify."
+              "description": "Nome da aplicacao no Coolify."
+            }
+          }
+        }
+      },
+      {
+        "name": "coolify-getApplicationLogs",
+        "toolReferenceName": "coolifyGetApplicationLogs",
+        "displayName": "Coolify Logs do Container",
+        "modelDescription": "Obtem os logs em execucao (runtime) do container de uma aplicacao. Use para diagnosticar uma aplicacao que ja esta no ar; para logs de build use coolify-getDeploymentLogs.",
+        "userDescription": "Logs do container em execucao.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "logs"
+        ],
+        "icon": "$(output)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "appId": {
+              "type": "string",
+              "description": "UUID da aplicacao no Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Nome da aplicacao no Coolify."
+            }
+          }
+        }
+      },
+      {
+        "name": "coolify-listApplicationEnvs",
+        "toolReferenceName": "coolifyListApplicationEnvs",
+        "displayName": "Coolify Listar Variaveis",
+        "modelDescription": "Lista as chaves das variaveis de ambiente de uma aplicacao. Os valores nunca sao retornados.",
+        "userDescription": "Lista chaves de variaveis de ambiente.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "environment"
+        ],
+        "icon": "$(symbol-key)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "appId": {
+              "type": "string",
+              "description": "UUID da aplicacao no Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Nome da aplicacao no Coolify."
+            }
+          }
+        }
+      },
+      {
+        "name": "coolify-setApplicationEnv",
+        "toolReferenceName": "coolifySetApplicationEnv",
+        "displayName": "Coolify Definir Variavel",
+        "modelDescription": "Cria ou atualiza uma variavel de ambiente de uma aplicacao. Requer confirmacao do usuario e identificacao explicita da aplicacao.",
+        "userDescription": "Define variavel de ambiente.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "environment"
+        ],
+        "icon": "$(symbol-key)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "appId": {
+              "type": "string",
+              "description": "UUID da aplicacao no Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Nome da aplicacao no Coolify."
+            },
+            "key": {
+              "type": "string",
+              "description": "Nome da variavel."
+            },
+            "value": {
+              "type": "string",
+              "description": "Valor da variavel."
+            },
+            "isPreview": {
+              "type": "boolean",
+              "description": "Se a variavel vale para deploys de preview."
             }
           },
+          "required": [
+            "key",
+            "value"
+          ],
           "anyOf": [
             {
               "required": [
@@ -162,12 +266,12 @@
         "name": "coolify-startDeployment",
         "toolReferenceName": "coolifyStartDeployment",
         "displayName": "Coolify Iniciar Deployment",
-        "modelDescription": "Inicia um novo deployment para uma aplicação do Coolify por id ou nome.",
-        "userDescription": "Inicia deploy de aplicação no Coolify.",
+        "modelDescription": "Inicia um novo deployment de uma aplicacao. ACAO DESTRUTIVA: requer confirmacao do usuario e identificacao explicita da aplicacao (appId ou appName). Nunca assume um alvo padrao.",
+        "userDescription": "Inicia deployment de uma aplicacao.",
         "canBeReferencedInPrompt": true,
         "tags": [
           "coolify",
-          "deploy"
+          "deployments"
         ],
         "icon": "$(rocket)",
         "inputSchema": {
@@ -175,11 +279,15 @@
           "properties": {
             "appId": {
               "type": "string",
-              "description": "Application UUID in Coolify."
+              "description": "UUID da aplicacao no Coolify."
             },
             "appName": {
               "type": "string",
-              "description": "Application name in Coolify."
+              "description": "Nome da aplicacao no Coolify."
+            },
+            "force": {
+              "type": "boolean",
+              "description": "Forca rebuild ignorando cache."
             }
           },
           "anyOf": [
@@ -199,13 +307,13 @@
       {
         "name": "coolify-applicationLifecycle",
         "toolReferenceName": "coolifyApplicationLifecycle",
-        "displayName": "Coolify Ciclo de Vida da Aplicação",
-        "modelDescription": "Executa ações de ciclo de vida (start, stop ou restart) para uma aplicação do Coolify.",
-        "userDescription": "Executa start/stop/restart em aplicação do Coolify.",
+        "displayName": "Coolify Ciclo de Vida da Aplicacao",
+        "modelDescription": "Executa start, stop ou restart em uma aplicacao. ACAO DESTRUTIVA: requer confirmacao do usuario e identificacao explicita da aplicacao.",
+        "userDescription": "Start/stop/restart de aplicacao.",
         "canBeReferencedInPrompt": true,
         "tags": [
           "coolify",
-          "lifecycle"
+          "applications"
         ],
         "icon": "$(debug-restart)",
         "inputSchema": {
@@ -218,56 +326,21 @@
                 "stop",
                 "restart"
               ],
-              "description": "Lifecycle action to run."
+              "description": "Acao de ciclo de vida."
             },
             "appId": {
               "type": "string",
-              "description": "Application UUID in Coolify."
+              "description": "UUID da aplicacao no Coolify."
             },
             "appName": {
               "type": "string",
-              "description": "Application name in Coolify."
+              "description": "Nome da aplicacao no Coolify."
             }
           },
           "required": [
             "action"
-          ]
-        }
-      },
-      {
-        "name": "coolify-getDeploymentLogs",
-        "toolReferenceName": "coolifyGetDeploymentLogs",
-        "displayName": "Coolify Logs de Deployment",
-        "modelDescription": "Retorna logs de um deployment por identificador do deployment ou por aplicação.",
-        "userDescription": "Obtém logs de deployment no Coolify.",
-        "canBeReferencedInPrompt": true,
-        "tags": [
-          "coolify",
-          "logs"
-        ],
-        "icon": "$(output)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "deploymentId": {
-              "type": "string",
-              "description": "Deployment identifier in Coolify."
-            },
-            "appId": {
-              "type": "string",
-              "description": "Application UUID in Coolify."
-            },
-            "appName": {
-              "type": "string",
-              "description": "Application name in Coolify."
-            }
-          },
+          ],
           "anyOf": [
-            {
-              "required": [
-                "deploymentId"
-              ]
-            },
             {
               "required": [
                 "appId"
@@ -282,17 +355,102 @@
         }
       },
       {
+        "name": "coolify-listDeployments",
+        "toolReferenceName": "coolifyListDeployments",
+        "displayName": "Coolify Listar Deployments",
+        "modelDescription": "Lista o historico de deployments. Sem filtro retorna os mais recentes de todas as aplicacoes; com appId ou appName retorna o historico daquela aplicacao. Esta ferramenta apenas le dados e nunca dispara um deploy.",
+        "userDescription": "Lista historico de deployments.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "deployments"
+        ],
+        "icon": "$(history)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "appId": {
+              "type": "string",
+              "description": "UUID da aplicacao no Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Nome da aplicacao no Coolify."
+            },
+            "take": {
+              "type": "number",
+              "description": "Quantidade de registros (1-50)."
+            }
+          }
+        }
+      },
+      {
+        "name": "coolify-getDeploymentLogs",
+        "toolReferenceName": "coolifyGetDeploymentLogs",
+        "displayName": "Coolify Logs de Deployment",
+        "modelDescription": "Obtem os logs de build e deploy. Sem deploymentId usa o deployment mais recente da aplicacao informada.",
+        "userDescription": "Logs de um deployment.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "logs"
+        ],
+        "icon": "$(output)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "deploymentId": {
+              "type": "string",
+              "description": "UUID do deployment no Coolify."
+            },
+            "appId": {
+              "type": "string",
+              "description": "UUID da aplicacao no Coolify."
+            },
+            "appName": {
+              "type": "string",
+              "description": "Nome da aplicacao no Coolify."
+            }
+          }
+        }
+      },
+      {
+        "name": "coolify-cancelDeployment",
+        "toolReferenceName": "coolifyCancelDeployment",
+        "displayName": "Coolify Cancelar Deployment",
+        "modelDescription": "Cancela um deployment em andamento. ACAO DESTRUTIVA: requer confirmacao do usuario.",
+        "userDescription": "Cancela um deployment.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "deployments"
+        ],
+        "icon": "$(stop-circle)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "deploymentId": {
+              "type": "string",
+              "description": "UUID do deployment no Coolify."
+            }
+          },
+          "required": [
+            "deploymentId"
+          ]
+        }
+      },
+      {
         "name": "coolify-listServices",
         "toolReferenceName": "coolifyListServices",
-        "displayName": "Coolify Listar Serviços",
-        "modelDescription": "Lista serviços disponíveis no Coolify com status e metadados.",
-        "userDescription": "Lista serviços do Coolify.",
+        "displayName": "Coolify Listar Servicos",
+        "modelDescription": "Lista todos os servicos do Coolify com status e saude.",
+        "userDescription": "Lista servicos do Coolify.",
         "canBeReferencedInPrompt": true,
         "tags": [
           "coolify",
           "services"
         ],
-        "icon": "$(server)",
+        "icon": "$(server-process)",
         "inputSchema": {
           "type": "object",
           "properties": {}
@@ -301,14 +459,13 @@
       {
         "name": "coolify-serviceLifecycle",
         "toolReferenceName": "coolifyServiceLifecycle",
-        "displayName": "Coolify Ciclo de Vida do Serviço",
-        "modelDescription": "Executa ações de ciclo de vida (start, stop ou restart) para um serviço do Coolify.",
-        "userDescription": "Executa start/stop/restart em serviço do Coolify.",
+        "displayName": "Coolify Ciclo de Vida do Servico",
+        "modelDescription": "Executa start, stop ou restart em um servico. ACAO DESTRUTIVA: requer confirmacao do usuario e identificacao explicita do servico.",
+        "userDescription": "Start/stop/restart de servico.",
         "canBeReferencedInPrompt": true,
         "tags": [
           "coolify",
-          "services",
-          "lifecycle"
+          "services"
         ],
         "icon": "$(debug-restart)",
         "inputSchema": {
@@ -321,28 +478,40 @@
                 "stop",
                 "restart"
               ],
-              "description": "Lifecycle action to run."
+              "description": "Acao de ciclo de vida."
             },
             "serviceId": {
               "type": "string",
-              "description": "Service UUID in Coolify."
+              "description": "UUID do servico no Coolify."
             },
             "serviceName": {
               "type": "string",
-              "description": "Service name in Coolify."
+              "description": "Nome do servico no Coolify."
             }
           },
           "required": [
             "action"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "serviceId"
+              ]
+            },
+            {
+              "required": [
+                "serviceName"
+              ]
+            }
           ]
         }
       },
       {
         "name": "coolify-listDatabases",
         "toolReferenceName": "coolifyListDatabases",
-        "displayName": "Coolify Listar Bancos de Dados",
-        "modelDescription": "Lista bancos de dados disponíveis no Coolify com status e metadados.",
-        "userDescription": "Lista bancos de dados do Coolify.",
+        "displayName": "Coolify Listar Bancos",
+        "modelDescription": "Lista todos os bancos de dados do Coolify com status e saude.",
+        "userDescription": "Lista bancos de dados.",
         "canBeReferencedInPrompt": true,
         "tags": [
           "coolify",
@@ -357,14 +526,13 @@
       {
         "name": "coolify-databaseLifecycle",
         "toolReferenceName": "coolifyDatabaseLifecycle",
-        "displayName": "Coolify Ciclo de Vida do Banco de Dados",
-        "modelDescription": "Executa ações de ciclo de vida (start, stop ou restart) para um banco de dados do Coolify.",
-        "userDescription": "Executa start/stop/restart em banco de dados do Coolify.",
+        "displayName": "Coolify Ciclo de Vida do Banco",
+        "modelDescription": "Executa start, stop ou restart em um banco de dados. ACAO DESTRUTIVA: parar um banco derruba todas as aplicacoes que dependem dele. Requer confirmacao do usuario e identificacao explicita.",
+        "userDescription": "Start/stop/restart de banco.",
         "canBeReferencedInPrompt": true,
         "tags": [
           "coolify",
-          "databases",
-          "lifecycle"
+          "databases"
         ],
         "icon": "$(debug-restart)",
         "inputSchema": {
@@ -377,20 +545,164 @@
                 "stop",
                 "restart"
               ],
-              "description": "Lifecycle action to run."
+              "description": "Acao de ciclo de vida."
             },
             "databaseId": {
               "type": "string",
-              "description": "Database UUID in Coolify."
+              "description": "UUID do banco no Coolify."
             },
             "databaseName": {
               "type": "string",
-              "description": "Database name in Coolify."
+              "description": "Nome do banco no Coolify."
             }
           },
           "required": [
             "action"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "databaseId"
+              ]
+            },
+            {
+              "required": [
+                "databaseName"
+              ]
+            }
           ]
+        }
+      },
+      {
+        "name": "coolify-listDatabaseBackups",
+        "toolReferenceName": "coolifyListDatabaseBackups",
+        "displayName": "Coolify Backups do Banco",
+        "modelDescription": "Lista os agendamentos de backup de um banco e as execucoes recentes de cada um. Observacao: a API do Coolify nao expoe restauracao de backup, apenas agendamento e execucao.",
+        "userDescription": "Lista agendamentos e execucoes de backup.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "databases",
+          "backups"
+        ],
+        "icon": "$(archive)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "databaseId": {
+              "type": "string",
+              "description": "UUID do banco no Coolify."
+            },
+            "databaseName": {
+              "type": "string",
+              "description": "Nome do banco no Coolify."
+            }
+          }
+        }
+      },
+      {
+        "name": "coolify-runDatabaseBackup",
+        "toolReferenceName": "coolifyRunDatabaseBackup",
+        "displayName": "Coolify Executar Backup",
+        "modelDescription": "Dispara imediatamente um backup a partir de um agendamento existente. Requer confirmacao do usuario.",
+        "userDescription": "Executa backup imediato.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "databases",
+          "backups"
+        ],
+        "icon": "$(save)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "databaseId": {
+              "type": "string",
+              "description": "UUID do banco no Coolify."
+            },
+            "databaseName": {
+              "type": "string",
+              "description": "Nome do banco no Coolify."
+            },
+            "scheduleId": {
+              "type": "string",
+              "description": "UUID do agendamento de backup."
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "databaseId"
+              ]
+            },
+            {
+              "required": [
+                "databaseName"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "coolify-listProjects",
+        "toolReferenceName": "coolifyListProjects",
+        "displayName": "Coolify Listar Projetos",
+        "modelDescription": "Lista os projetos do Coolify.",
+        "userDescription": "Lista projetos.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "projects"
+        ],
+        "icon": "$(folder)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "coolify-listServers",
+        "toolReferenceName": "coolifyListServers",
+        "displayName": "Coolify Listar Servidores",
+        "modelDescription": "Lista os servidores (VPS) registrados no Coolify com sinais de causa raiz: acessivel, contagem de falhas de conexao, alerta de disco cheio, tipo de proxy e quantidade de recursos hospedados. Use para descobrir por que varios recursos cairam ao mesmo tempo.",
+        "userDescription": "Lista servidores e saude da infraestrutura.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "servers",
+          "infrastructure"
+        ],
+        "icon": "$(server)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "coolify-getServerResources",
+        "toolReferenceName": "coolifyGetServerResources",
+        "displayName": "Coolify Recursos do Servidor",
+        "modelDescription": "Lista quais aplicacoes, servicos e bancos rodam em um servidor especifico, com o status de cada um.",
+        "userDescription": "Recursos hospedados em um servidor.",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "coolify",
+          "servers",
+          "infrastructure"
+        ],
+        "icon": "$(server)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "serverId": {
+              "type": "string",
+              "description": "UUID do servidor no Coolify."
+            },
+            "serverName": {
+              "type": "string",
+              "description": "Nome do servidor no Coolify."
+            }
+          }
         }
       }
     ],
@@ -652,7 +964,7 @@
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test:coverage": "pnpm run compile-tests && pnpm dlx c8 --reporter=text --reporter=lcov --check-coverage --lines 35 --functions 35 --branches 20 --statements 35 pnpm dlx mocha --ui tdd \"out/test/**/*.test.js\" --exclude \"out/test/extension.test.js\"",
+    "test:coverage": "pnpm run compile-tests && pnpm dlx c8 --reporter=text --reporter=lcov --check-coverage --lines 65 --functions 50 --branches 75 --statements 65 pnpm dlx mocha --ui tdd \"out/test/**/*.test.js\" --exclude \"out/test/extension.test.js\"",
     "test": "vscode-test"
   },
   "devDependencies": {

@@ -1,0 +1,12 @@
+# Override apenas para desenvolvimento local.
+#
+# NUNCA use este arquivo no VPS: ele publica o painel numa porta do host, sem
+# TLS e sem passar pelo Traefik. Em producao o acesso deve ser exclusivamente
+# pelo dominio com HTTPS.
+#
+# Uso:
+#   docker compose -f docker-compose.control-center.yml -f docker-compose.control-center.dev.yml up --build
+services:
+  control-center-frontend:
+    ports:
+      - "127.0.0.1:8088:8080"

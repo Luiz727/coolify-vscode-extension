@@ -3,13 +3,16 @@ import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { CoolifyApiError, CoolifyService } from '../services/CoolifyService';
 import type {
   Application as CoolifyApplication,
-  DatabaseBackupResource,
+  CreateBackupScheduleRequest,
+  DatabaseBackupExecution,
+  DatabaseBackupSchedule,
   DatabaseResource,
   Deployment as CoolifyDeployment,
   EnvironmentVariable,
   EnvironmentVariableCreateRequest,
   EnvironmentVariableUpdateRequest,
   ProjectResource,
+  ServerResource,
   ServiceResource,
 } from '../services/CoolifyService';
 import { logger } from '../services/LoggerService';
@@ -25,6 +28,10 @@ import {
   isUiStateTransitionAllowed,
   UiState,
 } from '../utils/uiStateMachine';
+import {
+  formatTimestamp,
+  resolveDeploymentId,
+} from '../utils/deploymentIdentity';
 
 // Types and Interfaces
 interface RetryConfig {
@@ -65,6 +72,8 @@ interface Deployment {
   commit: string;
   startedAt: string;
   externalUrl?: string;
+  /** Distinguishes a live deployment from a historical one. */
+  isRunning?: boolean;
 }
 
 interface DeploymentListItem {
@@ -107,6 +116,17 @@ interface ProjectListItem {
   description: string;
 }
 
+/** Server health as shown in the sidebar — the VPS-level root-cause signals. */
+interface ServerListItem {
+  id: string;
+  name: string;
+  ip: string;
+  proxyType: string;
+  reachable: boolean;
+  unreachableCount: number;
+  highDiskUsage: boolean;
+}
+
 interface WebViewMessage {
   type:
     | 'refresh'
@@ -134,7 +154,9 @@ interface WebViewMessage {
     | 'fetch-project-details'
     | 'fetch-database-backups'
     | 'create-database-backup'
-    | 'restore-database-backup'
+    | 'run-database-backup'
+    | 'fetch-backup-executions'
+    | 'fetch-app-runtime-logs'
     | 'sync-app-envs'
     | 'set-env-sync-conflict-strategy'
     | 'open-external-url'
@@ -148,7 +170,7 @@ interface WebViewMessage {
   databaseId?: string;
   projectId?: string;
   deploymentId?: string;
-  backupId?: string;
+  scheduleId?: string;
   contextName?: string;
   environmentVariableUuid?: string;
   environmentVariableKey?: string;
@@ -163,6 +185,7 @@ interface RefreshDataMessage {
   services: ServiceListItem[];
   databases: DatabaseListItem[];
   projects: ProjectListItem[];
+  servers: ServerListItem[];
   contextNames: string[];
   activeContextName: string;
   envSyncConflictStrategy: EnvSyncConflictStrategy;
@@ -211,13 +234,31 @@ interface DatabaseDetailsMessage {
 interface DatabaseBackupsMessage {
   type: 'database-backups-data';
   databaseId: string;
-  backups: Array<{
-    id: string;
-    name: string;
+  schedules: Array<{
+    uuid: string;
+    frequency: string;
+    enabled: boolean;
+    saveS3: boolean;
+  }>;
+}
+
+interface BackupExecutionsMessage {
+  type: 'backup-executions-data';
+  databaseId: string;
+  scheduleId: string;
+  executions: Array<{
+    uuid: string;
     status: string;
     createdAt: string;
     size: string;
+    message: string;
   }>;
+}
+
+interface ApplicationRuntimeLogsMessage {
+  type: 'app-runtime-logs-data';
+  applicationId: string;
+  logs: string;
 }
 
 interface ProjectDetailsMessage {
@@ -242,6 +283,8 @@ type WebViewOutgoingMessage =
   | ServiceDetailsMessage
   | DatabaseDetailsMessage
   | DatabaseBackupsMessage
+  | BackupExecutionsMessage
+  | ApplicationRuntimeLogsMessage
   | ProjectDetailsMessage
   | DeploymentLogsMessage
   | UiStateMessage;
@@ -254,30 +297,56 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxDelay: 10000,
 };
 
-const REFRESH_INTERVAL = 5000;
-const FAILED_DEPLOYMENT_RETENTION_MS = 30 * 60 * 1000;
+/**
+ * Poll interval.
+ *
+ * At 5s with five endpoints per cycle a single open window issued ~60 requests
+ * per minute against the VPS. 15s keeps the panel responsive at a third of the
+ * cost, and refreshData is still called explicitly after every action.
+ */
+const REFRESH_INTERVAL = 15000;
+
+/** Backoff ceiling while the API keeps failing. */
+const REFRESH_BACKOFF_MAX_MS = 120000;
+
+/** Recent deployments fetched per application to build the history view. */
+const DEPLOYMENT_HISTORY_PER_APP = 5;
 
 export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private refreshInterval?: NodeJS.Timeout;
   private messageHandler?: vscode.Disposable;
-  private retryCount = 0;
   private isDisposed = false;
   private deployingApplications = new Set<string>();
   private pendingRefresh?: NodeJS.Timeout;
+  /** Lives for the whole provider (configuration listener). */
   private disposables: vscode.Disposable[] = [];
+  /** Rebound on every resolveWebviewView; cleared to avoid duplicates. */
+  private viewDisposables: vscode.Disposable[] = [];
   private currentUiState: UiState = 'loading';
   private lastRefreshErrorMessage = '';
-  private recentFailedDeployments = new Map<
-    string,
-    { deployment: Deployment; recordedAt: number }
-  >();
+  private consecutiveRefreshFailures = 0;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private configManager: ConfigurationManager
   ) {
     this.initializeConfigurationListener();
+  }
+
+  /**
+   * Builds a configured API client for the active context.
+   * Centralises the "is it configured?" check that every public method needs.
+   */
+  private async createService(): Promise<CoolifyService> {
+    const serverUrl = await this.configManager.getServerUrl();
+    const token = await this.configManager.getToken();
+
+    if (!serverUrl || !token) {
+      throw new Error('Extension not configured properly');
+    }
+
+    return new CoolifyService(serverUrl, token);
   }
 
   // Initialization Methods
@@ -327,7 +396,14 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }, 100);
   }
 
-  // Retry Logic
+  /**
+   * Retries an operation with exponential backoff.
+   *
+   * Only safe for READ operations. A write (deploy, start/stop, backup) that
+   * times out may well have been accepted by the server, so retrying it would
+   * queue a duplicate — which is how a single timeout used to become three
+   * deployments of the same application.
+   */
   private async withRetry<T>(
     operation: () => Promise<T>,
     retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
@@ -359,8 +435,10 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private shouldRetryError(error: unknown): boolean {
+    // An unclassified error is usually a bug in our own code (a TypeError, a
+    // bad payload). Repeating it three times just repeats the bug.
     if (!(error instanceof CoolifyApiError)) {
-      return true;
+      return false;
     }
 
     return (
@@ -373,33 +451,52 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   // Refresh Management
   private stopRefreshInterval(): void {
     if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
+      clearTimeout(this.refreshInterval);
       this.refreshInterval = undefined;
     }
   }
 
+  /**
+   * Self-scheduling refresh loop with exponential backoff.
+   *
+   * A fixed interval kept hammering a struggling server every few seconds, and
+   * giving up entirely after three failures left the panel permanently frozen
+   * until the user noticed. Backing off recovers on its own once the API does.
+   */
   private startRefreshInterval(): void {
     this.stopRefreshInterval();
-    this.retryCount = 0;
+    this.consecutiveRefreshFailures = 0;
 
-    this.refreshInterval = setInterval(async () => {
-      try {
-        await this.refreshData();
-        this.retryCount = 0;
-      } catch (error) {
-        this.retryCount++;
-        logger.warn('Auto-refresh failed', error);
-
-        if (this.retryCount >= DEFAULT_RETRY_CONFIG.maxAttempts) {
-          this.stopRefreshInterval();
-          if (this.isViewValid()) {
-            vscode.window.showErrorMessage(
-              'Auto-refresh stopped due to repeated errors. Click refresh to try again.'
-            );
-          }
-        }
+    const scheduleNext = () => {
+      if (this.isDisposed) {
+        return;
       }
-    }, REFRESH_INTERVAL);
+
+      const delay =
+        this.consecutiveRefreshFailures === 0
+          ? REFRESH_INTERVAL
+          : Math.min(
+              REFRESH_INTERVAL * 2 ** this.consecutiveRefreshFailures,
+              REFRESH_BACKOFF_MAX_MS
+            );
+
+      this.refreshInterval = setTimeout(async () => {
+        try {
+          await this.refreshData();
+          this.consecutiveRefreshFailures = 0;
+        } catch (error) {
+          this.consecutiveRefreshFailures += 1;
+          logger.warn('Auto-refresh failed', {
+            attempt: this.consecutiveRefreshFailures,
+            error,
+          });
+        }
+
+        scheduleNext();
+      }, delay);
+    };
+
+    scheduleNext();
   }
 
   // Data Management
@@ -428,16 +525,23 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         }
 
         const service = new CoolifyService(serverUrl, token);
-        const [applications, deployments] = await Promise.all([
-          service.getApplications(),
-          service.getDeployments(),
-        ]);
+        const applications = await service.getApplications();
 
-        const [servicesResult, databasesResult, projectsResult] = await Promise.allSettled([
-          service.getServices(),
-          service.getDatabases(),
-          service.getProjects(),
-        ]);
+        // /deployments alone only reports what is running right now, so the
+        // panel would be empty on an idle system. Compose it with the recent
+        // history of each application.
+        const deployments = await service.getDeploymentHistory(
+          applications.map((application) => application.uuid),
+          DEPLOYMENT_HISTORY_PER_APP
+        );
+
+        const [servicesResult, databasesResult, projectsResult, serversResult] =
+          await Promise.allSettled([
+            service.getServices(),
+            service.getDatabases(),
+            service.getProjects(),
+            service.getServers(),
+          ]);
 
         const services =
           servicesResult.status === 'fulfilled' ? servicesResult.value : [];
@@ -445,6 +549,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           databasesResult.status === 'fulfilled' ? databasesResult.value : [];
         const projects =
           projectsResult.status === 'fulfilled' ? projectsResult.value : [];
+        const servers =
+          serversResult.status === 'fulfilled' ? serversResult.value : [];
 
         if (servicesResult.status === 'rejected') {
           logger.warn('Failed to load services for sidebar', servicesResult.reason);
@@ -458,12 +564,17 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           logger.warn('Failed to load projects for sidebar', projectsResult.reason);
         }
 
+        if (serversResult.status === 'rejected') {
+          logger.warn('Failed to load servers for sidebar', serversResult.reason);
+        }
+
         await this.updateWebViewState(
           applications,
           deployments,
           services,
           databases,
           projects,
+          servers,
           contextNames,
           activeContextName,
           serverUrl,
@@ -476,8 +587,6 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleUnconfiguredState(): Promise<void> {
-    this.recentFailedDeployments.clear();
-
     await this.transitionUiState(
       'unconfigured',
       'Coolify is not configured. Please configure the extension.'
@@ -497,6 +606,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         services: [],
         databases: [],
         projects: [],
+        servers: [],
         contextNames: [],
         activeContextName: '',
         envSyncConflictStrategy: 'prompt',
@@ -510,6 +620,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     services: ServiceResource[],
     databases: DatabaseResource[],
     projects: ProjectResource[],
+    servers: ServerResource[],
     contextNames: string[],
     activeContextName: string,
     serverUrl: string,
@@ -537,19 +648,19 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
 
     const uiApplications = this.mapApplicationsToUI(validApplications, serverUrl);
     const uiDeployments = this.mapDeploymentsToUI(validDeployments);
-    const deploymentsWithRecentFailures =
-      this.mergeDeploymentsWithRecentFailures(uiDeployments);
     const uiServices = this.mapServicesToUI(services);
     const uiDatabases = this.mapDatabasesToUI(databases);
     const uiProjects = this.mapProjectsToUI(projects);
+    const uiServers = this.mapServersToUI(servers);
 
     this._view!.webview.postMessage({
       type: 'refresh-data',
       applications: uiApplications,
-      deployments: deploymentsWithRecentFailures,
+      deployments: uiDeployments,
       services: uiServices,
       databases: uiDatabases,
       projects: uiProjects,
+      servers: uiServers,
       contextNames,
       activeContextName,
       envSyncConflictStrategy,
@@ -612,81 +723,41 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private mapDeploymentsToUI(deployments: CoolifyDeployment[]): Deployment[] {
-    return deployments.map((d) => ({
-      id: String(d.id ?? ''),
-      applicationId: sanitizeDisplayTextOrFallback(
-        d.application_id,
-        String(d.id ?? '')
-      ),
-      applicationName: sanitizeDisplayTextOrFallback(
-        d.application_name,
-        sanitizeDisplayTextOrFallback(d.application_id, String(d.id ?? ''))
-      ),
-      status: sanitizeDisplayTextOrFallback(d.status, 'unknown'),
-      commit:
-        sanitizeDisplayText(d.commit_message) ||
-        `Deploying ${sanitizeDisplayText(d.commit).slice(0, 7) || 'latest'} commit`,
-      startedAt: sanitizeDisplayText(d.created_at)
-        ? new Date(sanitizeDisplayText(d.created_at)).toLocaleString()
-        : '',
-      externalUrl: this.normalizeExternalUrl(d.deployment_url),
-    }));
+    return deployments.map((d) => {
+      // The API addresses deployments by UUID; the numeric id yields 404 on
+      // /deployments/{uuid} and /deployments/{uuid}/cancel.
+      const id = resolveDeploymentId(d);
+      // application_id arrives as a number, which the string sanitizer drops —
+      // converting first keeps the deployment linked to its application.
+      const applicationId = sanitizeDisplayTextOrFallback(
+        d.application_id === undefined || d.application_id === null
+          ? ''
+          : String(d.application_id),
+        ''
+      );
+
+      return {
+        id,
+        applicationId,
+        applicationName: sanitizeDisplayTextOrFallback(
+          d.application_name,
+          applicationId || id
+        ),
+        status: sanitizeDisplayTextOrFallback(d.status, 'unknown'),
+        commit:
+          sanitizeDisplayText(d.commit_message) ||
+          `Deploying ${sanitizeDisplayText(d.commit).slice(0, 7) || 'latest'} commit`,
+        // formatTimestamp returns '' instead of the string "Invalid Date".
+        startedAt: formatTimestamp(sanitizeDisplayText(d.created_at)),
+        externalUrl: this.normalizeExternalUrl(d.deployment_url),
+        isRunning: d.isRunning === true,
+      };
+    });
   }
 
-  private normalizeDeploymentStatus(status: string): string {
-    return sanitizeDisplayTextOrFallback(status, 'unknown').toLowerCase();
-  }
-
-  private isFailedDeploymentStatus(status: string): boolean {
-    const normalizedStatus = this.normalizeDeploymentStatus(status);
-    return (
-      normalizedStatus.includes('fail') ||
-      normalizedStatus.includes('error') ||
-      normalizedStatus.includes('crash')
-    );
-  }
-
-  private trackRecentFailedDeployments(deployments: Deployment[]): void {
-    const now = Date.now();
-    const currentDeploymentsById = new Map(
-      deployments.map((deployment) => [deployment.id, deployment])
-    );
-
-    for (const deployment of deployments) {
-      if (this.isFailedDeploymentStatus(deployment.status)) {
-        this.recentFailedDeployments.set(deployment.id, {
-          deployment,
-          recordedAt: now,
-        });
-      }
-    }
-
-    for (const [deploymentId, cached] of this.recentFailedDeployments.entries()) {
-      const isExpired = now - cached.recordedAt > FAILED_DEPLOYMENT_RETENTION_MS;
-      const currentDeployment = currentDeploymentsById.get(deploymentId);
-      const noLongerFailed =
-        !!currentDeployment &&
-        !this.isFailedDeploymentStatus(currentDeployment.status);
-
-      if (isExpired || noLongerFailed) {
-        this.recentFailedDeployments.delete(deploymentId);
-      }
-    }
-  }
-
-  private mergeDeploymentsWithRecentFailures(
-    deployments: Deployment[]
-  ): Deployment[] {
-    this.trackRecentFailedDeployments(deployments);
-
-    const currentIds = new Set(deployments.map((deployment) => deployment.id));
-    const cachedFailures = Array.from(this.recentFailedDeployments.values())
-      .filter((item) => !currentIds.has(item.deployment.id))
-      .sort((a, b) => b.recordedAt - a.recordedAt)
-      .map((item) => item.deployment);
-
-    return [...cachedFailures, ...deployments];
-  }
+  // The in-memory cache of recently failed deployments was removed: real
+  // history now comes from /deployments/applications/{uuid}, which survives
+  // reloads and does not distort ordering by pinning stale entries on top.
 
   private mapServicesToUI(services: ServiceResource[]): ServiceListItem[] {
     return services.map((item) => ({
@@ -711,6 +782,20 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       id: item.uuid,
       name: sanitizeDisplayTextOrFallback(item.name, item.uuid),
       description: sanitizeDisplayText(item.description),
+    }));
+  }
+
+  private mapServersToUI(servers: ServerResource[]): ServerListItem[] {
+    return servers.map((item) => ({
+      id: item.uuid,
+      name: sanitizeDisplayTextOrFallback(item.name, item.uuid),
+      ip: sanitizeDisplayText(item.ip),
+      proxyType: sanitizeDisplayTextOrFallback(item.proxy_type, 'none'),
+      // Coolify counts consecutive SSH failures; anything above zero means the
+      // machine is not answering reliably.
+      reachable: !(item.unreachable_count && item.unreachable_count > 0),
+      unreachableCount: Number(item.unreachable_count) || 0,
+      highDiskUsage: item.high_disk_usage_notification_sent === true,
     }));
   }
 
@@ -780,17 +865,11 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     this.deployingApplications.add(applicationId);
 
     try {
-      await this.withRetry(async () => {
-        const serverUrl = await this.configManager.getServerUrl();
-        const token = await this.configManager.getToken();
-
-        if (!serverUrl || !token) {
-          throw new Error('Extension not configured properly');
-        }
-
-        const service = new CoolifyService(serverUrl, token);
-        await service.startDeployment(applicationId);
-      });
+      // Deliberately NOT wrapped in withRetry: /deploy is not idempotent, and a
+      // timed-out request may already have been queued server-side. Retrying
+      // would start the same application two or three times.
+      const service = await this.createService();
+      await service.startDeployment(applicationId);
 
       await this.refreshData();
 
@@ -946,11 +1025,21 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /**
+   * Disposes the listeners bound to the previous webview instance.
+   *
+   * resolveWebviewView runs again on every updateView(), so without this the
+   * visibility and disposal handlers accumulated on each call — duplicated
+   * listeners meant duplicated refreshes.
+   */
   private cleanupExistingView(): void {
     if (this.messageHandler) {
       this.messageHandler.dispose();
       this.messageHandler = undefined;
     }
+
+    this.viewDisposables.forEach((disposable) => disposable.dispose());
+    this.viewDisposables = [];
   }
 
   private initializeNewView(webviewView: vscode.WebviewView): void {
@@ -1291,38 +1380,74 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'fetch-database-backups':
         if (message.databaseId && this.isViewValid()) {
-          const backups = await this.getDatabaseBackups(message.databaseId);
-          this._view!.webview.postMessage({
-            type: 'database-backups-data',
-            databaseId: message.databaseId,
-            backups,
-          } as WebViewOutgoingMessage);
+          await this.postBackupSchedules(message.databaseId);
         }
         break;
       case 'create-database-backup':
         if (message.databaseId && this.isViewValid()) {
-          const result = await this.createDatabaseBackup(message.databaseId);
+          // `frequency` is mandatory in the API, so ask for it instead of
+          // sending an empty body that always answers 422.
+          const frequency = await vscode.window.showQuickPick(
+            [
+              { label: 'Diario', value: 'daily' },
+              { label: 'A cada hora', value: 'hourly' },
+              { label: 'Semanal', value: 'weekly' },
+              { label: 'Mensal', value: 'monthly' },
+            ],
+            {
+              placeHolder: 'Frequencia do backup agendado',
+              title: 'Criar agendamento de backup',
+            }
+          );
+
+          if (!frequency) {
+            break;
+          }
+
+          const runNow = await vscode.window.showQuickPick(['Sim', 'Nao'], {
+            placeHolder: 'Executar um backup imediatamente apos criar?',
+          });
+
+          const result = await this.createBackupSchedule(message.databaseId, {
+            frequency: frequency.value,
+            enabled: true,
+            backup_now: runNow === 'Sim',
+          });
           vscode.window.showInformationMessage(result);
-          const backups = await this.getDatabaseBackups(message.databaseId);
+          await this.postBackupSchedules(message.databaseId);
+        }
+        break;
+      case 'run-database-backup':
+        if (message.databaseId && message.scheduleId && this.isViewValid()) {
+          const result = await this.runBackupNow(
+            message.databaseId,
+            message.scheduleId
+          );
+          vscode.window.showInformationMessage(result);
+          await this.postBackupSchedules(message.databaseId);
+        }
+        break;
+      case 'fetch-app-runtime-logs':
+        if (message.applicationId && this.isViewValid()) {
+          const logs = await this.getApplicationRuntimeLogs(message.applicationId);
           this._view!.webview.postMessage({
-            type: 'database-backups-data',
-            databaseId: message.databaseId,
-            backups,
+            type: 'app-runtime-logs-data',
+            applicationId: message.applicationId,
+            logs,
           } as WebViewOutgoingMessage);
         }
         break;
-      case 'restore-database-backup':
-        if (message.databaseId && message.backupId && this.isViewValid()) {
-          const result = await this.restoreDatabaseBackup(
+      case 'fetch-backup-executions':
+        if (message.databaseId && message.scheduleId && this.isViewValid()) {
+          const executions = await this.getBackupExecutions(
             message.databaseId,
-            message.backupId
+            message.scheduleId
           );
-          vscode.window.showInformationMessage(result);
-          const backups = await this.getDatabaseBackups(message.databaseId);
           this._view!.webview.postMessage({
-            type: 'database-backups-data',
+            type: 'backup-executions-data',
             databaseId: message.databaseId,
-            backups,
+            scheduleId: message.scheduleId,
+            executions,
           } as WebViewOutgoingMessage);
         }
         break;
@@ -1360,7 +1485,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private setupVisibilityHandler(webviewView: vscode.WebviewView): void {
-    this.disposables.push(
+    // Bound to the current view instance; cleared by cleanupExistingView.
+    this.viewDisposables.push(
       webviewView.onDidChangeVisibility(() => {
         if (webviewView.visible) {
           this.refreshData().catch((error) => {
@@ -1368,6 +1494,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           });
           this.startRefreshInterval();
         } else {
+          // Nobody is looking at the panel: stop paying for it.
           this.stopRefreshInterval();
         }
       })
@@ -1375,7 +1502,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
   }
 
   private setupDisposalHandler(webviewView: vscode.WebviewView): void {
-    this.disposables.push(
+    this.viewDisposables.push(
       webviewView.onDidDispose(() => {
         this.dispose();
       })
@@ -1494,26 +1621,41 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     return error instanceof CoolifyApiError && error.type === 'auth';
   }
 
+  /**
+   * Handles a 401 from Coolify.
+   *
+   * Deliberately does NOT wipe the stored credentials: a 401 is frequently
+   * transient (Coolify restarting, a proxy in front returning 401, a brief
+   * clock skew). Destroying the token on every occurrence forced a full
+   * reconfiguration over a hiccup. The user is told what happened and decides.
+   */
   private async handleAuthenticationError(): Promise<void> {
-    this.lastRefreshErrorMessage =
-      'Authentication failed. Please reconfigure the extension.';
+    const message =
+      'Authentication failed. Your Coolify token was rejected. Reconfigure if the problem persists.';
+    this.lastRefreshErrorMessage = message;
 
-    await this.configManager.clearConfiguration();
-    await vscode.commands.executeCommand(
-      'setContext',
-      'coolify.isConfigured',
-      false
-    );
+    await this.transitionUiState('error', message);
+
     if (this.isViewValid()) {
-      vscode.window.showErrorMessage(
-        'Authentication failed. Please reconfigure the extension.'
+      const choice = await vscode.window.showErrorMessage(
+        message,
+        'Reconfigure',
+        'Retry',
+        'Dismiss'
       );
-    }
 
-    await this.transitionUiState(
-      'unconfigured',
-      'Authentication failed. Please reconfigure the extension.'
-    );
+      if (choice === 'Reconfigure') {
+        await this.configManager.clearConfiguration();
+        await vscode.commands.executeCommand(
+          'setContext',
+          'coolify.isConfigured',
+          false
+        );
+        await vscode.commands.executeCommand('coolify.configure');
+      } else if (choice === 'Retry') {
+        await this.refreshData().catch(() => undefined);
+      }
+    }
   }
 
   private async handleRefreshError(error: unknown): Promise<void> {
@@ -1749,40 +1891,79 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  public async getDatabaseBackups(
+  /**
+   * Scheduled backup configurations (frequency, target), not backup files.
+   * The actual runs come from getBackupExecutions.
+   */
+  public async getBackupSchedules(
     databaseId: string
   ): Promise<
     Array<{
-      id: string;
-      name: string;
-      status: string;
-      createdAt: string;
-      size: string;
+      uuid: string;
+      frequency: string;
+      enabled: boolean;
+      saveS3: boolean;
     }>
   > {
     try {
-      const serverUrl = await this.configManager.getServerUrl();
-      const token = await this.configManager.getToken();
+      const service = await this.createService();
+      const schedules = await service.listBackupSchedules(databaseId);
 
-      if (!serverUrl || !token) {
-        throw new Error('Extension not configured properly');
-      }
-
-      const service = new CoolifyService(serverUrl, token);
-      const backups = await service.listDatabaseBackups(databaseId);
-
-      return backups.map((backup: DatabaseBackupResource) => ({
-        id: sanitizeDisplayTextOrFallback(backup.id, 'unknown'),
-        name: sanitizeDisplayTextOrFallback(backup.name, 'backup'),
-        status: sanitizeDisplayTextOrFallback(backup.status, 'unknown'),
-        createdAt: sanitizeDisplayText(backup.created_at),
-        size: sanitizeDisplayText(backup.size),
+      return schedules.map((schedule: DatabaseBackupSchedule) => ({
+        uuid: sanitizeDisplayTextOrFallback(schedule.uuid, 'unknown'),
+        frequency: sanitizeDisplayTextOrFallback(schedule.frequency, 'nao definida'),
+        enabled: schedule.enabled !== false,
+        saveS3: schedule.saveS3 === true,
       }));
     } catch (error) {
-      logger.error('Failed to get database backups', {
+      logger.error('Failed to get backup schedules', { databaseId, error });
+      return [];
+    }
+  }
+
+  public async getBackupExecutions(
+    databaseId: string,
+    scheduleUuid: string
+  ): Promise<
+    Array<{
+      uuid: string;
+      status: string;
+      createdAt: string;
+      size: string;
+      message: string;
+    }>
+  > {
+    try {
+      const service = await this.createService();
+      const executions = await service.listBackupExecutions(
         databaseId,
+        scheduleUuid
+      );
+
+      return executions.map((execution: DatabaseBackupExecution) => ({
+        uuid: sanitizeDisplayTextOrFallback(execution.uuid, 'unknown'),
+        status: sanitizeDisplayTextOrFallback(execution.status, 'unknown'),
+        createdAt: sanitizeDisplayText(execution.createdAt),
+        size: sanitizeDisplayText(execution.size),
+        message: sanitizeDisplayText(execution.message),
+      }));
+    } catch (error) {
+      logger.error('Failed to get backup executions', {
+        databaseId,
+        scheduleUuid,
         error,
       });
+      return [];
+    }
+  }
+
+  public async getServers(): Promise<ServerListItem[]> {
+    try {
+      const service = await this.createService();
+      const servers = await service.getServers();
+      return this.mapServersToUI(servers);
+    } catch (error) {
+      logger.error('Failed to get servers', error);
       return [];
     }
   }
@@ -1875,36 +2056,63 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  public async createDatabaseBackup(databaseId: string): Promise<string> {
-    const serverUrl = await this.configManager.getServerUrl();
-    const token = await this.configManager.getToken();
-
-    if (!serverUrl || !token) {
-      throw new Error('Extension not configured properly');
+  private async postBackupSchedules(databaseId: string): Promise<void> {
+    if (!this.isViewValid()) {
+      return;
     }
 
-    const service = new CoolifyService(serverUrl, token);
-    const result = await service.createDatabaseBackup(databaseId);
-    await this.refreshData();
-    return result;
+    const schedules = await this.getBackupSchedules(databaseId);
+    this._view!.webview.postMessage({
+      type: 'database-backups-data',
+      databaseId,
+      schedules,
+    } as WebViewOutgoingMessage);
   }
 
-  public async restoreDatabaseBackup(
+  /** Runtime container logs for an application. */
+  public async getApplicationRuntimeLogs(applicationId: string): Promise<string> {
+    try {
+      const service = await this.createService();
+      return await service.getApplicationLogs(applicationId);
+    } catch (error) {
+      logger.warn('Failed to fetch application runtime logs', {
+        applicationId,
+        error,
+      });
+      return '';
+    }
+  }
+
+  public async updateEnvironmentVariablesBulk(
+    applicationId: string,
+    variables: EnvironmentVariableUpdateRequest[]
+  ): Promise<void> {
+    const service = await this.createService();
+    await service.updateEnvironmentVariablesBulk(applicationId, variables);
+  }
+
+  public async createBackupSchedule(
     databaseId: string,
-    backupId: string
+    request: CreateBackupScheduleRequest
   ): Promise<string> {
-    const serverUrl = await this.configManager.getServerUrl();
-    const token = await this.configManager.getToken();
-
-    if (!serverUrl || !token) {
-      throw new Error('Extension not configured properly');
-    }
-
-    const service = new CoolifyService(serverUrl, token);
-    const result = await service.restoreDatabaseBackup(databaseId, backupId);
+    const service = await this.createService();
+    const result = await service.createBackupSchedule(databaseId, request);
     await this.refreshData();
     return result;
   }
+
+  /** Triggers an immediate run of an existing schedule. */
+  public async runBackupNow(
+    databaseId: string,
+    scheduleUuid: string
+  ): Promise<string> {
+    const service = await this.createService();
+    return service.runBackupNow(databaseId, scheduleUuid);
+  }
+
+  // NOTE: Coolify's API has no restore endpoint. Restoring a database backup
+  // is a manual procedure — see docs/OPERATIONAL_GUIDE.md. Do not reintroduce
+  // a restore button that cannot work.
 
   public async getDeploymentDetails(
     deploymentId: string
@@ -2059,6 +2267,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       this.messageHandler.dispose();
       this.messageHandler = undefined;
     }
+
+    this.viewDisposables.forEach((d) => d.dispose());
+    this.viewDisposables = [];
 
     this.disposables.forEach((d) => d.dispose());
     this.disposables = [];

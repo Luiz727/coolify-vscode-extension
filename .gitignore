@@ -4,3 +4,12 @@ node_modules
 .vscode-test/
 *.vsix
 .anexos
+
+# Build and test artifacts — regenerated on every run, no value in history.
+coverage
+web-control-center/frontend/tmp
+web-control-center/backend/data
+
+# Local configuration. Never commit: holds Coolify and Hostinger API tokens.
+.env
+.env.local

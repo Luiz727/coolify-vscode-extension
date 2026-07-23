@@ -97,13 +97,10 @@ suite('CoolifyService Integration (Mock API)', () => {
     await service.createEnvironmentVariable('app-1', {
       key: 'API_KEY',
       value: 'value-1',
-      is_buildtime: true,
-      is_runtime: true,
       is_preview: false,
     });
 
     await service.updateEnvironmentVariable('app-1', {
-      uuid: 'env-1',
       key: 'API_KEY',
       value: 'value-2',
     });
@@ -118,11 +115,23 @@ suite('CoolifyService Integration (Mock API)', () => {
     );
     assert.strictEqual(calls[0].init?.method, 'POST');
 
+    // Coolify rejects unknown fields with 422, so the request body must contain
+    // only the keys the API documents.
+    const createdBody = JSON.parse(String(calls[0].init?.body));
+    assert.deepStrictEqual(Object.keys(createdBody).sort(), [
+      'is_preview',
+      'key',
+      'value',
+    ]);
+
     assert.strictEqual(
       String(calls[1].input),
       'https://coolify.example.com/api/v1/applications/app-1/envs'
     );
     assert.strictEqual(calls[1].init?.method, 'PATCH');
+
+    const updatedBody = JSON.parse(String(calls[1].init?.body));
+    assert.deepStrictEqual(Object.keys(updatedBody).sort(), ['key', 'value']);
 
     assert.strictEqual(
       String(calls[2].input),
