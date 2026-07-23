@@ -175,6 +175,16 @@ export interface EnvironmentVariableUpdateRequest {
   is_shown_once?: boolean;
 }
 
+/** Human-readable error detail, since Error objects serialize to `{}` in logs. */
+function describeApiError(error: unknown): string {
+  if (error instanceof CoolifyApiError) {
+    const status = error.statusCode ? ` ${error.statusCode}` : '';
+    const endpoint = error.endpoint ? ` (${error.endpoint})` : '';
+    return `${error.type}${status}: ${error.message}${endpoint}`;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class CoolifyService {
   private readonly client: HttpClient;
 
@@ -282,9 +292,12 @@ export class CoolifyService {
 
     if (payload && typeof payload === 'object') {
       const candidate = payload as Record<string, unknown>;
-      const arrayLike = [candidate.backups, candidate.items, candidate.data].find(
-        (value) => Array.isArray(value)
-      );
+      const arrayLike = [
+        candidate.backups,
+        candidate.deployments,
+        candidate.items,
+        candidate.data,
+      ].find((value) => Array.isArray(value));
       if (Array.isArray(arrayLike)) {
         return arrayLike;
       }
@@ -332,6 +345,11 @@ export class CoolifyService {
   ): Promise<Deployment[]> {
     const collected: Deployment[] = [];
     const queue = [...applicationUuids];
+    // Aggregate failures into a single log line: one warning per application
+    // per cycle floods the output and — because Error does not JSON-serialize —
+    // each line said only `error: {}`, hiding the actual cause.
+    let failureCount = 0;
+    let firstError: unknown;
 
     const workers = Array.from(
       { length: Math.max(1, Math.min(concurrency, queue.length || 1)) },
@@ -350,16 +368,25 @@ export class CoolifyService {
             );
             collected.push(...history);
           } catch (error) {
-            logger.warn('Failed to load deployment history for application', {
-              applicationUuid: uuid,
-              error,
-            });
+            failureCount += 1;
+            if (firstError === undefined) {
+              firstError = error;
+            }
           }
         }
       }
     );
 
     await Promise.all(workers);
+
+    if (failureCount > 0) {
+      logger.warn('Deployment history unavailable for some applications', {
+        failed: failureCount,
+        total: applicationUuids.length,
+        reason: describeApiError(firstError),
+      });
+    }
+
     return collected;
   }
 
@@ -395,11 +422,14 @@ export class CoolifyService {
     const safeSkip = Number.isFinite(skip) ? Math.max(0, skip) : 0;
     const safeTake = Number.isFinite(take) ? Math.max(1, take) : 10;
 
-    return this.fetchValidatedArray(
-      `/api/v1/deployments/applications/${applicationUuid}?skip=${safeSkip}&take=${safeTake}`,
-      isValidCoolifyDeployment,
-      'application deployments'
+    // Tolerant parse: some Coolify versions wrap the list in
+    // `{ deployments: [...] }` instead of returning a bare array, which the
+    // strict array parser rejected outright.
+    const payload = await this.fetchWithAuth<unknown>(
+      `/api/v1/deployments/applications/${applicationUuid}?skip=${safeSkip}&take=${safeTake}`
     );
+
+    return this.toArrayPayload(payload).filter(isValidCoolifyDeployment);
   }
 
   async getDeployment(deploymentId: string): Promise<Deployment> {

@@ -368,6 +368,9 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
    */
   private slowCache = new Map<string, { value: unknown; storedAt: number }>();
 
+  /** Shares an in-progress load between concurrent callers of the same key. */
+  private inFlightLoads = new Map<string, Promise<unknown>>();
+
   /** Used to detect the moment a deployment stops running (i.e. finishes). */
   private previousRunningDeploymentIds = new Set<string>();
 
@@ -381,9 +384,26 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       return cached.value as T;
     }
 
-    const value = await load();
-    this.slowCache.set(key, { value, storedAt: Date.now() });
-    return value;
+    // Two refreshes fire close together at startup (initial + on-visible).
+    // Without this, both fan out the per-application history at once, doubling
+    // the request count. Concurrent callers now share one load.
+    const existing = this.inFlightLoads.get(key);
+    if (existing) {
+      return existing as Promise<T>;
+    }
+
+    const loadPromise = (async () => {
+      try {
+        const value = await load();
+        this.slowCache.set(key, { value, storedAt: Date.now() });
+        return value;
+      } finally {
+        this.inFlightLoads.delete(key);
+      }
+    })();
+
+    this.inFlightLoads.set(key, loadPromise);
+    return loadPromise as Promise<T>;
   }
 
   /** Forces the next refresh to re-read everything (used after a write). */

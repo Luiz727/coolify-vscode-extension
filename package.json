@@ -2,7 +2,7 @@
   "name": "vscode-coolify",
   "displayName": "Coolify Deployments",
   "description": "Track and deploy your Coolify applications right from Visual Studio Code",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "Nixcon Sistemas"
   },
