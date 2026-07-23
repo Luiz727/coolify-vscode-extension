@@ -111,13 +111,26 @@ export function activate(context: vscode.ExtensionContext) {
           .get<boolean>('allowInsecureHttp', false);
 
         const parsedUrl = new URL(normalizedUrl);
-        if (parsedUrl.protocol === 'http:' && !allowInsecureHttp) {
-          throw new Error(
-            'Insecure HTTP is disabled. Use HTTPS or enable coolify.allowInsecureHttp in settings.'
-          );
-        }
 
-        if (parsedUrl.protocol === 'http:' && allowInsecureHttp) {
+        // HTTP is blocked by default. Rather than fail with an instruction to
+        // go edit settings and start over, offer to enable it inline — the
+        // common case is a self-hosted Coolify on a trusted network/IP.
+        if (parsedUrl.protocol === 'http:' && !allowInsecureHttp) {
+          const choice = await vscode.window.showWarningMessage(
+            `The server "${parsedUrl.host}" uses insecure HTTP. Your API token would travel unencrypted on the network.`,
+            { modal: true, detail: 'Only continue if this server is on a trusted/private network.' },
+            'Enable HTTP and continue',
+            'Cancel'
+          );
+
+          if (choice !== 'Enable HTTP and continue') {
+            return;
+          }
+
+          await vscode.workspace
+            .getConfiguration('coolify')
+            .update('allowInsecureHttp', true, vscode.ConfigurationTarget.Global);
+        } else if (parsedUrl.protocol === 'http:') {
           vscode.window.showWarningMessage(
             'You are using an insecure HTTP connection. Your API token may be exposed on the network.'
           );

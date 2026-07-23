@@ -158,6 +158,7 @@ interface WebViewMessage {
     | 'run-database-backup'
     | 'fetch-backup-executions'
     | 'fetch-app-runtime-logs'
+    | 'show-app-runtime-logs'
     | 'sync-app-envs'
     | 'set-env-sync-conflict-strategy'
     | 'open-external-url'
@@ -172,11 +173,20 @@ interface WebViewMessage {
   projectId?: string;
   deploymentId?: string;
   scheduleId?: string;
+  /** Human-readable name of the target, used in confirmation dialogs. */
+  resourceName?: string;
   contextName?: string;
   environmentVariableUuid?: string;
   environmentVariableKey?: string;
   conflictStrategy?: EnvSyncConflictStrategy;
   url?: string;
+}
+
+interface SectionErrors {
+  services: boolean;
+  databases: boolean;
+  projects: boolean;
+  servers: boolean;
 }
 
 interface RefreshDataMessage {
@@ -190,6 +200,7 @@ interface RefreshDataMessage {
   contextNames: string[];
   activeContextName: string;
   envSyncConflictStrategy: EnvSyncConflictStrategy;
+  sectionErrors: SectionErrors;
 }
 
 interface UiStateMessage {
@@ -644,6 +655,15 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           logger.warn('Failed to load servers for sidebar', serversResult.reason);
         }
 
+        // A rejected secondary fetch falls back to [] above; the flag lets the
+        // UI say "failed to load" instead of the misleading "none found".
+        const sectionErrors = {
+          services: servicesResult.status === 'rejected',
+          databases: databasesResult.status === 'rejected',
+          projects: projectsResult.status === 'rejected',
+          servers: serversResult.status === 'rejected',
+        };
+
         await this.updateWebViewState(
           applications,
           deployments,
@@ -654,7 +674,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
           contextNames,
           activeContextName,
           serverUrl,
-          envSyncConflictStrategy
+          envSyncConflictStrategy,
+          sectionErrors
         );
       });
     } catch (error) {
@@ -686,6 +707,12 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         contextNames: [],
         activeContextName: '',
         envSyncConflictStrategy: 'prompt',
+        sectionErrors: {
+          services: false,
+          databases: false,
+          projects: false,
+          servers: false,
+        },
       } as WebViewOutgoingMessage);
     }
   }
@@ -700,7 +727,8 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     contextNames: string[],
     activeContextName: string,
     serverUrl: string,
-    envSyncConflictStrategy: EnvSyncConflictStrategy
+    envSyncConflictStrategy: EnvSyncConflictStrategy,
+    sectionErrors: SectionErrors
   ): Promise<void> {
     if (!this.isViewValid()) {
       return;
@@ -740,6 +768,7 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
       contextNames,
       activeContextName,
       envSyncConflictStrategy,
+      sectionErrors,
     } as WebViewOutgoingMessage);
 
     this.lastRefreshErrorMessage = '';
@@ -1100,6 +1129,62 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
     return message;
   }
 
+  /**
+   * Confirms a state-changing action before it runs.
+   *
+   * Every lifecycle action from the sidebar goes through here. Clicking Stop on
+   * a card used to act immediately; a mis-click on a production database is not
+   * an acceptable failure mode, so the user confirms the resource by name and
+   * sees the active context first — consistent with the chat and web console.
+   */
+  private async confirmStateChange(
+    action: string,
+    resourceType: string,
+    resourceName: string | undefined
+  ): Promise<boolean> {
+    const label = resourceName?.trim() || 'este recurso';
+    const contextName = await this.configManager.getActiveContextName();
+
+    const impact =
+      action === 'stop'
+        ? 'O recurso ficará indisponível até ser iniciado novamente.'
+        : action === 'restart'
+          ? 'O recurso ficará indisponível durante o reinício.'
+          : action === 'deploy'
+            ? 'Uma nova versão será construída e publicada, substituindo a atual.'
+            : 'O recurso será iniciado.';
+
+    const choice = await vscode.window.showWarningMessage(
+      `Confirmar "${action}" em ${resourceType} "${label}"?`,
+      { modal: true, detail: `${impact}\n\nContexto: ${contextName}` },
+      'Confirmar'
+    );
+
+    return choice === 'Confirmar';
+  }
+
+  /** Confirms, then runs a lifecycle action and reports its result. */
+  private async runConfirmedAction(
+    action: 'start' | 'stop' | 'restart',
+    resourceType: string,
+    id: string | undefined,
+    resourceName: string | undefined,
+    executor: (id: string) => Promise<string>
+  ): Promise<void> {
+    if (!id) {
+      return;
+    }
+
+    if (!(await this.confirmStateChange(action, resourceType, resourceName))) {
+      return;
+    }
+
+    const result = await executor(id);
+    if (this.isViewValid()) {
+      vscode.window.showInformationMessage(result);
+    }
+  }
+
   // WebView Resolution
   public async resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -1180,81 +1265,57 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
         await this.refreshData();
         break;
       case 'deploy':
-        if (message.applicationId) {
+        if (
+          message.applicationId &&
+          (await this.confirmStateChange('deploy', 'aplicação', message.resourceName))
+        ) {
           await this.deployApplication(message.applicationId);
         }
         break;
       case 'start-app':
-        if (message.applicationId) {
-          const result = await this.startApplication(message.applicationId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('start', 'aplicação', message.applicationId, message.resourceName, (id) =>
+          this.startApplication(id)
+        );
         break;
       case 'stop-app':
-        if (message.applicationId) {
-          const result = await this.stopApplication(message.applicationId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('stop', 'aplicação', message.applicationId, message.resourceName, (id) =>
+          this.stopApplication(id)
+        );
         break;
       case 'restart-app':
-        if (message.applicationId) {
-          const result = await this.restartApplication(message.applicationId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('restart', 'aplicação', message.applicationId, message.resourceName, (id) =>
+          this.restartApplication(id)
+        );
         break;
       case 'start-service':
-        if (message.serviceId) {
-          const result = await this.startService(message.serviceId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('start', 'serviço', message.serviceId, message.resourceName, (id) =>
+          this.startService(id)
+        );
         break;
       case 'stop-service':
-        if (message.serviceId) {
-          const result = await this.stopService(message.serviceId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('stop', 'serviço', message.serviceId, message.resourceName, (id) =>
+          this.stopService(id)
+        );
         break;
       case 'restart-service':
-        if (message.serviceId) {
-          const result = await this.restartService(message.serviceId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('restart', 'serviço', message.serviceId, message.resourceName, (id) =>
+          this.restartService(id)
+        );
         break;
       case 'start-database':
-        if (message.databaseId) {
-          const result = await this.startDatabase(message.databaseId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('start', 'banco de dados', message.databaseId, message.resourceName, (id) =>
+          this.startDatabase(id)
+        );
         break;
       case 'stop-database':
-        if (message.databaseId) {
-          const result = await this.stopDatabase(message.databaseId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('stop', 'banco de dados', message.databaseId, message.resourceName, (id) =>
+          this.stopDatabase(id)
+        );
         break;
       case 'restart-database':
-        if (message.databaseId) {
-          const result = await this.restartDatabase(message.databaseId);
-          if (this.isViewValid()) {
-            vscode.window.showInformationMessage(result);
-          }
-        }
+        await this.runConfirmedAction('restart', 'banco de dados', message.databaseId, message.resourceName, (id) =>
+          this.restartDatabase(id)
+        );
         break;
       case 'show-deployment-details':
         if (message.deploymentId) {
@@ -1526,6 +1587,19 @@ export class CoolifyWebViewProvider implements vscode.WebviewViewProvider {
             applicationId: message.applicationId,
             logs,
           } as WebViewOutgoingMessage);
+        }
+        break;
+      case 'show-app-runtime-logs':
+        if (message.applicationId) {
+          // Opens the live container logs in an editor tab, like deploy logs.
+          const runtimeLogs = await this.getApplicationRuntimeLogs(
+            message.applicationId
+          );
+          const document = await vscode.workspace.openTextDocument({
+            language: 'log',
+            content: runtimeLogs || 'No runtime logs available for this application.',
+          });
+          await vscode.window.showTextDocument(document, { preview: true });
         }
         break;
       case 'fetch-backup-executions':

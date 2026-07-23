@@ -482,6 +482,19 @@
         animation: pulse 2s infinite;
       }
 
+      .live-badge {
+        margin-left: 8px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--vscode-charts-green, #3fb950);
+        border: 1px solid var(--vscode-charts-green, #3fb950);
+        animation: pulse 2s infinite;
+      }
+
       .deployment-status-success {
         color: var(--vscode-charts-green);
         border-color: var(--vscode-charts-green);
@@ -637,6 +650,88 @@
         border: 1px solid transparent;
         font-size: 12px;
       }
+
+      /* --- Overview toolbar: global search + health summary + freshness --- */
+      .overview-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 0 4px;
+      }
+      .global-search {
+        flex: 1 1 160px;
+        min-width: 120px;
+        box-sizing: border-box;
+        padding: 6px 10px;
+        border-radius: var(--control-radius);
+        border: 1px solid var(--vscode-input-border, transparent);
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        font-size: 12px;
+      }
+      .health-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .health-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--vscode-panel-border, transparent);
+        background: var(--vscode-badge-background);
+        color: var(--vscode-badge-foreground);
+        font-size: 11px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .health-chip:hover {
+        border-color: var(--vscode-focusBorder);
+      }
+      .health-chip.active {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 1px;
+      }
+      .health-chip .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .health-chip .count {
+        font-weight: 700;
+      }
+      .health-chip.bucket-running .dot { background: var(--vscode-charts-green, #3fb950); }
+      .health-chip.bucket-degraded .dot { background: var(--vscode-charts-orange, #d4761a); }
+      .health-chip.bucket-starting .dot { background: var(--vscode-charts-yellow, #cb7f1f); }
+      .health-chip.bucket-stopped .dot { background: var(--vscode-descriptionForeground, #888); }
+      .health-chip.bucket-error .dot { background: var(--vscode-charts-red, #f14c4c); }
+      .health-chip.bucket-unknown .dot { background: var(--vscode-descriptionForeground, #888); }
+      .last-updated {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        margin-left: auto;
+      }
+      .last-updated.stale {
+        color: var(--vscode-statusBarItem-warningForeground, #d4761a);
+        font-weight: 600;
+      }
+
+      .server-alert-banner {
+        box-sizing: border-box;
+        margin-top: 6px;
+        padding: 8px 10px;
+        border-radius: var(--control-radius);
+        border: 1px solid var(--vscode-inputValidation-errorBorder, #f14c4c);
+        background: var(--vscode-inputValidation-errorBackground, rgba(241,76,76,0.1));
+        color: var(--vscode-inputValidation-errorForeground, inherit);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .server-alert-banner[hidden] { display: none; }
       .ui-state-banner.visible {
         display: block;
       }
@@ -757,6 +852,21 @@
     </div>
 
     <div id="ui-state-banner" class="ui-state-banner" role="status" aria-live="polite"></div>
+
+    <div id="server-alert-banner" class="server-alert-banner" role="alert" hidden></div>
+
+    <div class="overview-bar">
+      <input
+        id="global-search"
+        class="global-search"
+        type="search"
+        placeholder="Search everything…"
+        aria-label="Search all resources"
+      />
+      <div id="health-summary" class="health-summary" role="group" aria-label="Health summary"></div>
+      <span id="last-updated" class="last-updated" aria-live="polite"></span>
+    </div>
+
     <div class="section context-section">
       <div class="filter-row">
         <span class="filter-label" id="context-label">Context:</span>
@@ -1008,8 +1118,9 @@
           filterLabel: 'Container status:',
           filterAll: 'All containers',
           loadingApplications: 'Loading applications...',
-          deploymentsTitle: 'Active Deployments',
-          deploymentsSubtitle: 'Current rollout timeline and logs.',
+          deploymentsTitle: 'Deployments',
+          deploymentsSubtitle: 'Running now and recent history.',
+          runningNow: 'running now',
           loadingDeployments: 'Loading deployments...',
           servicesTitle: 'Services',
           servicesSubtitle: 'Runtime dependencies and supporting components.',
@@ -1034,6 +1145,16 @@
           serverUnreachable: 'Unreachable from Coolify',
           serverHighDisk: 'High disk usage reported',
           serverNoIp: 'no IP',
+          searchPlaceholder: 'Search everything…',
+          noResultsFilter: 'No resources match the current filter.',
+          loadFailed: 'Failed to load — will retry automatically.',
+          updatedAt: 'Updated',
+          staleData: 'Stale — last good data at',
+          bucketRunning: 'Running',
+          bucketDegraded: 'Degraded',
+          bucketStarting: 'Starting',
+          bucketStopped: 'Stopped',
+          bucketError: 'Error',
           openInCoolify: 'Open',
           unknown: 'Unknown',
           noUrlConfigured: 'No URL configured',
@@ -1049,6 +1170,7 @@
           deploy: 'Deploy',
           details: 'Details',
           logs: 'Logs',
+          runtimeLogs: 'Container logs',
           hideLogs: 'Hide logs',
           cancel: 'Cancel',
           started: 'Started',
@@ -1113,8 +1235,9 @@
           filterLabel: 'Status do container:',
           filterAll: 'Todos os containers',
           loadingApplications: 'Carregando aplicações...',
-          deploymentsTitle: 'Deployments ativos',
-          deploymentsSubtitle: 'Linha do tempo de rollout e logs atuais.',
+          deploymentsTitle: 'Deployments',
+          deploymentsSubtitle: 'Em execucao agora e historico recente.',
+          runningNow: 'rodando agora',
           loadingDeployments: 'Carregando deployments...',
           servicesTitle: 'Serviços',
           servicesSubtitle: 'Dependências em execução e componentes de apoio.',
@@ -1139,6 +1262,16 @@
           serverUnreachable: 'Inacessivel pelo Coolify',
           serverHighDisk: 'Alerta de disco cheio',
           serverNoIp: 'sem IP',
+          searchPlaceholder: 'Buscar em tudo…',
+          noResultsFilter: 'Nenhum recurso corresponde ao filtro atual.',
+          loadFailed: 'Falha ao carregar — nova tentativa automatica.',
+          updatedAt: 'Atualizado',
+          staleData: 'Desatualizado — ultimo dado bom as',
+          bucketRunning: 'Rodando',
+          bucketDegraded: 'Degradado',
+          bucketStarting: 'Iniciando',
+          bucketStopped: 'Parados',
+          bucketError: 'Erro',
           openInCoolify: 'Abrir',
           unknown: 'Desconhecido',
           noUrlConfigured: 'Sem URL configurada',
@@ -1154,6 +1287,7 @@
           deploy: 'Deploy',
           details: 'Detalhes',
           logs: 'Logs',
+          runtimeLogs: 'Logs do container',
           hideLogs: 'Ocultar logs',
           cancel: 'Cancelar',
           started: 'Iniciado',
@@ -1340,8 +1474,15 @@
       let lastDatabases = [];
       let lastProjects = [];
       let lastServers = [];
+      let lastSectionErrors = {};
       let currentUiState = 'loading';
+      // Overview toolbar state.
+      let globalSearchText = '';
+      let activeBucketFilter = 'all';
+      let lastUpdatedAt = null;
+      let lastRefreshFailed = false;
       const refreshButton = document.getElementById('refresh-button');
+      const globalSearchInput = document.getElementById('global-search');
       const statusFilter = document.getElementById('status-filter');
       const favoritesOnlyToggle = document.getElementById('favorites-only-toggle');
       const envActionsToggle = document.getElementById('env-actions-toggle');
@@ -1413,6 +1554,48 @@
           renderApplications(lastApplications);
           persistState();
         });
+      }
+
+      if (globalSearchInput) {
+        globalSearchInput.placeholder = t('searchPlaceholder');
+        globalSearchInput.addEventListener('input', (event) => {
+          globalSearchText = String(event.target.value || '').trim().toLowerCase();
+          renderAllResourceSections();
+        });
+      }
+
+      // Search text + the health-chip bucket filter apply across every section.
+      function passesGlobalFilters(item) {
+        if (activeBucketFilter !== 'all') {
+          if (parseStatus(item.status).bucket !== activeBucketFilter) {
+            return false;
+          }
+        }
+        if (globalSearchText) {
+          const haystack = [item.name, item.description, item.status]
+            .map((value) => String(value || '').toLowerCase())
+            .join(' ');
+          if (!haystack.includes(globalSearchText)) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function hasActiveGlobalFilter() {
+        return activeBucketFilter !== 'all' || globalSearchText.length > 0;
+      }
+
+      function renderAllResourceSections() {
+        renderApplications(lastApplications);
+        renderServices(lastServices);
+        renderDatabases(lastDatabases);
+        renderHealthSummary();
+      }
+
+      function setBucketFilter(bucket) {
+        activeBucketFilter = activeBucketFilter === bucket ? 'all' : bucket;
+        renderAllResourceSections();
       }
 
       if (favoritesOnlyToggle) {
@@ -1852,6 +2035,9 @@
         if (currentUiState === 'error') {
           defaultMessage = t('uiStateError');
           banner.classList.add('ui-state-error');
+          // A failed refresh means whatever is on screen is now stale — mark it.
+          lastRefreshFailed = true;
+          renderLastUpdated();
         } else if (currentUiState === 'unconfigured') {
           defaultMessage = t('uiStateUnconfigured');
           banner.classList.add('ui-state-unconfigured');
@@ -1861,32 +2047,34 @@
         banner.textContent = message || defaultMessage;
       }
 
-      function deployApplication(applicationId) {
-        vscode.postMessage({ type: 'deploy', applicationId });
+      // The resource name travels with every action so the confirmation modal
+      // (shown by the extension host) can name exactly what is being changed.
+      function deployApplication(applicationId, applicationName) {
+        vscode.postMessage({ type: 'deploy', applicationId, resourceName: applicationName });
       }
 
-      function startApplication(applicationId) {
-        vscode.postMessage({ type: 'start-app', applicationId });
+      function startApplication(applicationId, applicationName) {
+        vscode.postMessage({ type: 'start-app', applicationId, resourceName: applicationName });
       }
 
-      function stopApplication(applicationId) {
-        vscode.postMessage({ type: 'stop-app', applicationId });
+      function stopApplication(applicationId, applicationName) {
+        vscode.postMessage({ type: 'stop-app', applicationId, resourceName: applicationName });
       }
 
-      function restartApplication(applicationId) {
-        vscode.postMessage({ type: 'restart-app', applicationId });
+      function restartApplication(applicationId, applicationName) {
+        vscode.postMessage({ type: 'restart-app', applicationId, resourceName: applicationName });
       }
 
-      function startService(serviceId) {
-        vscode.postMessage({ type: 'start-service', serviceId });
+      function startService(serviceId, serviceName) {
+        vscode.postMessage({ type: 'start-service', serviceId, resourceName: serviceName });
       }
 
-      function stopService(serviceId) {
-        vscode.postMessage({ type: 'stop-service', serviceId });
+      function stopService(serviceId, serviceName) {
+        vscode.postMessage({ type: 'stop-service', serviceId, resourceName: serviceName });
       }
 
-      function restartService(serviceId) {
-        vscode.postMessage({ type: 'restart-service', serviceId });
+      function restartService(serviceId, serviceName) {
+        vscode.postMessage({ type: 'restart-service', serviceId, resourceName: serviceName });
       }
 
       function listServiceDetails(serviceId) {
@@ -1908,16 +2096,16 @@
         persistState();
       }
 
-      function startDatabase(databaseId) {
-        vscode.postMessage({ type: 'start-database', databaseId });
+      function startDatabase(databaseId, databaseName) {
+        vscode.postMessage({ type: 'start-database', databaseId, resourceName: databaseName });
       }
 
-      function stopDatabase(databaseId) {
-        vscode.postMessage({ type: 'stop-database', databaseId });
+      function stopDatabase(databaseId, databaseName) {
+        vscode.postMessage({ type: 'stop-database', databaseId, resourceName: databaseName });
       }
 
-      function restartDatabase(databaseId) {
-        vscode.postMessage({ type: 'restart-database', databaseId });
+      function restartDatabase(databaseId, databaseName) {
+        vscode.postMessage({ type: 'restart-database', databaseId, resourceName: databaseName });
       }
 
       function listDatabaseDetails(databaseId) {
@@ -2239,7 +2427,8 @@
               message.servers,
               message.contextNames,
               message.activeContextName,
-              message.envSyncConflictStrategy
+              message.envSyncConflictStrategy,
+              message.sectionErrors
             );
             setRefreshing(false);
             break;
@@ -2308,6 +2497,25 @@
 
       function createEmptyElement(text) {
         return createElement('div', 'empty', text);
+      }
+
+      /**
+       * A button with a short visible label and a fuller accessible name.
+       * The label stays compact ("Start"); screen readers hear the resource
+       * ("Start — api-prod") via aria-label.
+       */
+      function createActionButton(className, label, resourceName, handler) {
+        const button = createElement('button', className, label);
+        button.type = 'button';
+        if (resourceName) {
+          button.setAttribute('aria-label', label + ' — ' + resourceName);
+        }
+        button.addEventListener('click', handler);
+        return button;
+      }
+
+      function showRuntimeLogs(applicationId) {
+        vscode.postMessage({ type: 'show-app-runtime-logs', applicationId });
       }
 
       function createApplicationCard(app) {
@@ -2421,29 +2629,36 @@
 
         const buttonGroup = createElement('div', 'button-group');
 
-        const startButton = createElement('button', 'secondary-button', t('start'));
-        startButton.type = 'button';
-        startButton.addEventListener('click', () => startApplication(app.id));
+        // aria-label repeats the resource name so a screen reader announces
+        // "Start api-prod", not just "Start" — the visible text stays short.
+        const startButton = createActionButton('secondary-button', t('start'), app.name, () =>
+          startApplication(app.id, app.name)
+        );
         buttonGroup.appendChild(startButton);
 
-        const stopButton = createElement('button', 'secondary-button', t('stop'));
-        stopButton.type = 'button';
-        stopButton.addEventListener('click', () => stopApplication(app.id));
+        const stopButton = createActionButton('secondary-button', t('stop'), app.name, () =>
+          stopApplication(app.id, app.name)
+        );
         buttonGroup.appendChild(stopButton);
 
-        const restartButton = createElement(
-          'button',
-          'secondary-button',
-          t('restart')
+        const restartButton = createActionButton('secondary-button', t('restart'), app.name, () =>
+          restartApplication(app.id, app.name)
         );
-        restartButton.type = 'button';
-        restartButton.addEventListener('click', () => restartApplication(app.id));
         buttonGroup.appendChild(restartButton);
 
-        const deployButton = createElement('button', 'deploy-button', t('deploy'));
-        deployButton.type = 'button';
-        deployButton.addEventListener('click', () => deployApplication(app.id));
+        const deployButton = createActionButton('deploy-button', t('deploy'), app.name, () =>
+          deployApplication(app.id, app.name)
+        );
         buttonGroup.appendChild(deployButton);
+
+        // U5: quick access to the live container logs, right on the card.
+        const runtimeLogsButton = createActionButton(
+          'secondary-button',
+          t('runtimeLogs'),
+          app.name,
+          () => showRuntimeLogs(app.id)
+        );
+        buttonGroup.appendChild(runtimeLogsButton);
 
         if (showEnvActions) {
           const envsButton = createElement('button', 'secondary-button', t('envs'));
@@ -2546,6 +2761,12 @@
             deployment.status || 'running'
           )
         );
+        // The section now lists history too, so mark what is actually live.
+        if (deployment.isRunning) {
+          statusBlock.appendChild(
+            createElement('span', 'live-badge', t('runningNow'))
+          );
+        }
         cardFooter.appendChild(statusBlock);
 
         const buttonGroup = createElement('div', 'button-group');
@@ -2674,25 +2895,26 @@
 
         const buttonGroup = createElement('div', 'button-group');
 
-        const startButton = createElement('button', 'secondary-button', t('start'));
-        startButton.type = 'button';
-        startButton.addEventListener('click', () => startService(service.id));
-        buttonGroup.appendChild(startButton);
-
-        const stopButton = createElement('button', 'secondary-button', t('stop'));
-        stopButton.type = 'button';
-        stopButton.addEventListener('click', () => stopService(service.id));
-        buttonGroup.appendChild(stopButton);
-
-        const restartButton = createElement('button', 'secondary-button', t('restart'));
-        restartButton.type = 'button';
-        restartButton.addEventListener('click', () => restartService(service.id));
-        buttonGroup.appendChild(restartButton);
-
-        const detailsButton = createElement('button', 'secondary-button', t('details'));
-        detailsButton.type = 'button';
-        detailsButton.addEventListener('click', () => listServiceDetails(service.id));
-        buttonGroup.appendChild(detailsButton);
+        buttonGroup.appendChild(
+          createActionButton('secondary-button', t('start'), service.name, () =>
+            startService(service.id, service.name)
+          )
+        );
+        buttonGroup.appendChild(
+          createActionButton('secondary-button', t('stop'), service.name, () =>
+            stopService(service.id, service.name)
+          )
+        );
+        buttonGroup.appendChild(
+          createActionButton('secondary-button', t('restart'), service.name, () =>
+            restartService(service.id, service.name)
+          )
+        );
+        buttonGroup.appendChild(
+          createActionButton('secondary-button', t('details'), service.name, () =>
+            listServiceDetails(service.id)
+          )
+        );
 
         const actionsBlock = createElement('div', 'card-actions-block');
         actionsBlock.appendChild(buttonGroup);
@@ -2829,25 +3051,26 @@
 
         const buttonGroup = createElement('div', 'button-group');
 
-        const startButton = createElement('button', 'secondary-button', t('start'));
-        startButton.type = 'button';
-        startButton.addEventListener('click', () => startDatabase(database.id));
-        buttonGroup.appendChild(startButton);
-
-        const stopButton = createElement('button', 'secondary-button', t('stop'));
-        stopButton.type = 'button';
-        stopButton.addEventListener('click', () => stopDatabase(database.id));
-        buttonGroup.appendChild(stopButton);
-
-        const restartButton = createElement('button', 'secondary-button', t('restart'));
-        restartButton.type = 'button';
-        restartButton.addEventListener('click', () => restartDatabase(database.id));
-        buttonGroup.appendChild(restartButton);
-
-        const detailsButton = createElement('button', 'secondary-button', t('details'));
-        detailsButton.type = 'button';
-        detailsButton.addEventListener('click', () => listDatabaseDetails(database.id));
-        buttonGroup.appendChild(detailsButton);
+        buttonGroup.appendChild(
+          createActionButton('secondary-button', t('start'), database.name, () =>
+            startDatabase(database.id, database.name)
+          )
+        );
+        buttonGroup.appendChild(
+          createActionButton('secondary-button', t('stop'), database.name, () =>
+            stopDatabase(database.id, database.name)
+          )
+        );
+        buttonGroup.appendChild(
+          createActionButton('secondary-button', t('restart'), database.name, () =>
+            restartDatabase(database.id, database.name)
+          )
+        );
+        buttonGroup.appendChild(
+          createActionButton('secondary-button', t('details'), database.name, () =>
+            listDatabaseDetails(database.id)
+          )
+        );
 
         const backupsButton = createElement('button', 'secondary-button', t('backups'));
         backupsButton.type = 'button';
@@ -2961,7 +3184,8 @@
         servers,
         contextNames,
         activeContext,
-        nextEnvSyncConflictStrategy
+        nextEnvSyncConflictStrategy,
+        sectionErrors
       ) {
         lastApplications = Array.isArray(applications) ? applications : [];
         lastDeployments = Array.isArray(deployments) ? deployments : [];
@@ -2969,6 +3193,7 @@
         lastDatabases = Array.isArray(databases) ? databases : [];
         lastProjects = Array.isArray(projects) ? projects : [];
         lastServers = Array.isArray(servers) ? servers : [];
+        lastSectionErrors = sectionErrors || {};
         availableContexts = Array.isArray(contextNames) ? contextNames : availableContexts;
         activeContextName = activeContext || activeContextName;
         envSyncConflictStrategy =
@@ -2988,15 +3213,136 @@
         renderDatabases(lastDatabases);
         renderProjects(lastProjects);
         renderServers(lastServers);
+
+        // Successful data arrived: refresh the overview and freshness stamp.
+        lastUpdatedAt = Date.now();
+        lastRefreshFailed = false;
+        renderHealthSummary();
+        renderServerAlert();
+        renderLastUpdated();
+
         persistState();
+      }
+
+      // Problems first — the operator opens this to find what is broken.
+      const SUMMARY_BUCKETS = [
+        { key: 'error', labelKey: 'bucketError' },
+        { key: 'degraded', labelKey: 'bucketDegraded' },
+        { key: 'stopped', labelKey: 'bucketStopped' },
+        { key: 'starting', labelKey: 'bucketStarting' },
+        { key: 'running', labelKey: 'bucketRunning' },
+      ];
+
+      function computeHealthSummary() {
+        const all = [...lastApplications, ...lastServices, ...lastDatabases];
+        const summary = {
+          running: 0, degraded: 0, starting: 0, stopped: 0, error: 0, unknown: 0, total: 0,
+        };
+        for (const item of all) {
+          const bucket = parseStatus(item.status).bucket;
+          summary[bucket] = (summary[bucket] || 0) + 1;
+          summary.total += 1;
+        }
+        return summary;
+      }
+
+      function renderHealthSummary() {
+        const container = document.getElementById('health-summary');
+        if (!container) {
+          return;
+        }
+        const summary = computeHealthSummary();
+        const nodes = SUMMARY_BUCKETS.filter((b) => summary[b.key] > 0).map((b) => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          const isActive = activeBucketFilter === b.key;
+          chip.className = 'health-chip bucket-' + b.key + (isActive ? ' active' : '');
+          chip.setAttribute('aria-pressed', String(isActive));
+          chip.setAttribute('aria-label', summary[b.key] + ' ' + t(b.labelKey));
+
+          const dot = document.createElement('span');
+          dot.className = 'dot';
+          chip.appendChild(dot);
+
+          const count = document.createElement('span');
+          count.className = 'count';
+          count.textContent = String(summary[b.key]);
+          chip.appendChild(count);
+
+          const label = document.createElement('span');
+          label.textContent = t(b.labelKey);
+          chip.appendChild(label);
+
+          chip.addEventListener('click', () => setBucketFilter(b.key));
+          return chip;
+        });
+        container.replaceChildren(...nodes);
+      }
+
+      function formatClockTime(timestamp) {
+        try {
+          return new Date(timestamp).toLocaleTimeString(
+            uiLanguage === 'pt-BR' ? 'pt-BR' : 'en-US'
+          );
+        } catch {
+          return '';
+        }
+      }
+
+      function renderLastUpdated() {
+        const el = document.getElementById('last-updated');
+        if (!el) {
+          return;
+        }
+        if (!lastUpdatedAt) {
+          el.textContent = '';
+          el.classList.remove('stale');
+          return;
+        }
+        if (lastRefreshFailed) {
+          // Never let stale data look live: say when the last good data is from.
+          el.textContent = t('staleData') + ' ' + formatClockTime(lastUpdatedAt);
+          el.classList.add('stale');
+        } else {
+          el.textContent = t('updatedAt') + ' ' + formatClockTime(lastUpdatedAt);
+          el.classList.remove('stale');
+        }
+      }
+
+      function renderServerAlert() {
+        const el = document.getElementById('server-alert-banner');
+        if (!el) {
+          return;
+        }
+        const problems = (lastServers || []).filter(
+          (server) => !server.reachable || server.highDiskUsage
+        );
+        if (problems.length === 0) {
+          el.hidden = true;
+          el.textContent = '';
+          return;
+        }
+        const parts = problems.map((server) => {
+          const flags = [];
+          if (!server.reachable) {
+            flags.push(t('serverUnreachable'));
+          }
+          if (server.highDiskUsage) {
+            flags.push(t('serverHighDisk'));
+          }
+          return (server.name || server.id) + ': ' + flags.join(', ');
+        });
+        el.textContent = '⚠ ' + parts.join('  ·  ');
+        el.hidden = false;
       }
 
       function renderApplications(applications) {
         const appsContainer = document.getElementById('applications');
+        const globallyFiltered = applications.filter(passesGlobalFilters);
         const filteredApplications =
           selectedContainerStatus === 'all'
-            ? applications
-            : applications.filter(
+            ? globallyFiltered
+            : globallyFiltered.filter(
                 (app) =>
                   parseStatus(app.status).containerStatus === selectedContainerStatus
               );
@@ -3015,7 +3361,18 @@
 
         const appNodes = [];
         if (sortedApplications.length === 0) {
-          appNodes.push(createEmptyElement(t('noApplications')));
+          // Distinguish "nothing exists" from "nothing matches the filter".
+          const anyFilter =
+            hasActiveGlobalFilter() ||
+            selectedContainerStatus !== 'all' ||
+            showFavoritesOnly;
+          appNodes.push(
+            createEmptyElement(
+              applications.length > 0 && anyFilter
+                ? t('noResultsFilter')
+                : t('noApplications')
+            )
+          );
         } else {
           sortedApplications.forEach((app) =>
             appNodes.push(createApplicationCard(app))
@@ -3062,17 +3419,27 @@
       function renderServices(services) {
         const servicesContainer = document.getElementById('services');
         const serviceNodes = [];
+        const list = Array.isArray(services) ? services : [];
+        const filtered = list.filter(passesGlobalFilters);
 
-        updateSectionCount('services', Array.isArray(services) ? services.length : 0);
+        updateSectionCount('services', filtered.length);
 
         if (collapsedSections.has('services')) {
           return;
         }
 
-        if (!Array.isArray(services) || services.length === 0) {
-          serviceNodes.push(createEmptyElement(t('noServices')));
+        if (filtered.length === 0) {
+          serviceNodes.push(
+            createEmptyElement(
+              lastSectionErrors.services
+                ? t('loadFailed')
+                : list.length > 0 && hasActiveGlobalFilter()
+                  ? t('noResultsFilter')
+                  : t('noServices')
+            )
+          );
         } else {
-          services.forEach((service) => serviceNodes.push(createServiceCard(service)));
+          filtered.forEach((service) => serviceNodes.push(createServiceCard(service)));
         }
 
         servicesContainer.replaceChildren(...serviceNodes);
@@ -3081,17 +3448,27 @@
       function renderDatabases(databases) {
         const databasesContainer = document.getElementById('databases');
         const databaseNodes = [];
+        const list = Array.isArray(databases) ? databases : [];
+        const filtered = list.filter(passesGlobalFilters);
 
-        updateSectionCount('databases', Array.isArray(databases) ? databases.length : 0);
+        updateSectionCount('databases', filtered.length);
 
         if (collapsedSections.has('databases')) {
           return;
         }
 
-        if (!Array.isArray(databases) || databases.length === 0) {
-          databaseNodes.push(createEmptyElement(t('noDatabases')));
+        if (filtered.length === 0) {
+          databaseNodes.push(
+            createEmptyElement(
+              lastSectionErrors.databases
+                ? t('loadFailed')
+                : list.length > 0 && hasActiveGlobalFilter()
+                  ? t('noResultsFilter')
+                  : t('noDatabases')
+            )
+          );
         } else {
-          databases.forEach((database) => databaseNodes.push(createDatabaseCard(database)));
+          filtered.forEach((database) => databaseNodes.push(createDatabaseCard(database)));
         }
 
         databasesContainer.replaceChildren(...databaseNodes);
@@ -3108,7 +3485,7 @@
         }
 
         if (!Array.isArray(projects) || projects.length === 0) {
-          projectNodes.push(createEmptyElement(t('noProjects')));
+          projectNodes.push(createEmptyElement(lastSectionErrors.projects ? t('loadFailed') : t('noProjects')));
         } else {
           projects.forEach((project) => projectNodes.push(createProjectCard(project)));
         }
@@ -3184,7 +3561,7 @@
         }
 
         if (!Array.isArray(servers) || servers.length === 0) {
-          serverNodes.push(createEmptyElement(t('noServers')));
+          serverNodes.push(createEmptyElement(lastSectionErrors.servers ? t('loadFailed') : t('noServers')));
         } else {
           // Problem machines first — that is what the operator is looking for.
           [...servers]

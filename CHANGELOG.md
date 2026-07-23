@@ -6,6 +6,39 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+### Reforma da UI da extensão (sidebar)
+
+**Segurança / robustez**
+
+- Toda ação que muda estado no card (start/stop/restart/deploy) agora **pede
+  confirmação**, nomeando o recurso e o contexto ativo — antes clicar "Stop" num
+  banco de produção executava na hora.
+- Onboarding HTTP: quando o servidor usa `http://`, o configure oferece
+  **"Enable HTTP and continue"** num clique, em vez de falhar e mandar editar as
+  settings manualmente.
+- Estados vazios agora distinguem **nada cadastrado** × **nada corresponde ao
+  filtro** × **falha ao carregar** (seções secundárias que caíam para "vazio"
+  em silêncio).
+- **Indicador de dado velho:** a barra superior mostra o horário do último dado
+  bom e marca "desatualizado" quando o refresh falha.
+
+**Usabilidade**
+
+- **Barra de visão geral** no topo: busca global filtrando todas as seções +
+  chips de saúde (Erro/Degradado/Parado/Iniciando/Rodando) clicáveis para
+  filtrar por bucket.
+- Seção de deployments renomeada de "Active Deployments" para "Deployments" e
+  com badge **"rodando agora"** distinguindo execução ao vivo de histórico.
+- **Faixa de alerta de servidor** no topo quando uma máquina está inacessível ou
+  com disco cheio.
+- Botão **"Logs do container"** direto no card da aplicação (logs de runtime).
+
+**Acessibilidade**
+
+- Botões de ação ganharam `aria-label` com o nome do recurso ("Start — api-prod"
+  em vez de só "Start"); chips de saúde são `button` navegáveis por teclado com
+  `aria-pressed`.
+
 ### Auditoria de confiabilidade — correções
 
 **Segurança**
